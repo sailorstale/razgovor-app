@@ -40,7 +40,7 @@
           <div class="strip-box" id="stripBox" onclick="speakMessage()" role="button" aria-label="Сказать фразу вслух">
             <div class="strip-pictograms" id="stripPictograms"></div>
             <div class="strip-actions" id="stripActions">
-              <button class="strip-btn" id="btnSpeak" onclick="event.stopPropagation();speakMessage()" aria-label="Сказать" title="Сказать"><span class="mi-slot" data-mi="volume"></span></button>
+              <button class="strip-btn" id="btnSpeak" onclick="event.stopPropagation();speakMessage()" aria-label="Сказать вслух" title="Сказать вслух"><span class="mi-slot" data-mi="volume"></span></button>
               <button class="strip-btn" onclick="event.stopPropagation();removeLast()" aria-label="Удалить последнее слово" title="Удалить"><span class="mi-slot" data-mi="autoclear"></span></button>
               <button class="strip-btn" onclick="event.stopPropagation();clearStrip()" aria-label="Очистить фразу" title="Очистить"><span class="mi-slot" data-mi="close"></span></button>
               <button class="strip-btn" onclick="event.stopPropagation();shareMessage()" aria-label="Поделиться фразой" title="Поделиться"><span class="mi-slot" data-mi="share"></span></button>
@@ -48,14 +48,14 @@
           </div>
         </div>
         <!-- ПОЛОСА ПРАВКИ. Видна только в режиме правки и сменяет строку фразы; содержимое
-             рисует renderEditBar (спецификация, раздел 8, «Правка словаря на доске»). -->
+             рисует renderEditBar (спецификация, раздел 8, «Правка доски»). -->
         <div class="edit-bar" id="editBar"></div>
         <nav class="board-path" id="boardPath" aria-label="Путь по папкам"></nav>
         <div class="grid-area">
           <div class="pictogram-grid" id="pictoGrid"></div>
         </div>
       </div>
-      <aside class="side-column" aria-label="Служебные кнопки">
+      <aside class="side-column" aria-label="Панель кнопок">
         <!-- Кнопка меню стоит первой и статично: на неё навешено удержание (bindHold),
              а динамическая часть столбца ниже перерисовывается. Открывается нажатием или
              удержанием 2,5 с — по настройке «Открывать удержанием». -->
@@ -71,17 +71,25 @@
 
   <!-- PARTNER VIEW — крупный показ сообщения взрослому + памятка -->
 
-  <!-- МЕНЮ — пять пунктов, как у Avaz без «Инструментов» (спецификация, раздел 6) -->
-  <!-- Меню — экран панели, как настройки. Заголовка нет по решению владельца, в шапке только «✕». -->
+  <!-- МЕНЮ — четыре пункта, как у Avaz без «Инструментов», и профиль в шапке (спецификация, раздел 6) -->
+  <!-- Меню — экран панели, как настройки. Заголовка нет по решению владельца: слева в шапке
+       стоит имя текущего профиля с галочкой вниз, нажатие ведёт на список профилей, где
+       профиль можно сменить или изменить; справа «✕». Пункта «Профили» в списке поэтому нет. -->
   <div class="screen" id="menu-screen">
-    <div class="panel-header"><h2></h2><button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button></div>
+    <div class="panel-header">
+      <button class="menu-profile" id="menuProfile" onclick="openProfiles()" aria-label="Текущий профиль: сменить или изменить"><span class="mi-slot menu-profile-icon" data-mi="profiles"></span><span class="menu-profile-name" id="menuProfileName"></span><span class="mi-slot" data-mi="down"></span></button>
+      <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
+    </div>
     <div class="panel-body">
-      <div class="cg-section">
-        <div class="cg-item" onclick="menuGo('settings')"><div class="cgi-icon" data-mi="settings"></div><div class="cgi-text"><div class="cgi-title">Настройки</div></div><span class="cgi-arrow" data-mi="chevr"></span></div>
-        <div class="cg-item" onclick="menuGo('edit')"><div class="cgi-icon" data-mi="groups"></div><div class="cgi-text"><div class="cgi-title">Правка словаря</div></div><span class="cgi-arrow" data-mi="chevr"></span></div>
-        <div class="cg-item" onclick="menuGo('search')"><div class="cgi-icon" data-mi="search"></div><div class="cgi-text"><div class="cgi-title">Поиск</div></div><span class="cgi-arrow" data-mi="chevr"></span></div>
-        <div class="cg-item" onclick="menuGo('profiles')"><div class="cgi-icon" data-mi="profiles"></div><div class="cgi-text"><div class="cgi-title">Профили</div></div><span class="cgi-arrow" data-mi="chevr"></span></div>
-        <div class="cg-item" onclick="menuGo('support')"><div class="cgi-icon" data-mi="help"></div><div class="cgi-text"><div class="cgi-title">Поддержка</div></div><span class="cgi-arrow" data-mi="chevr"></span></div>
+      <!-- Пункты меню рисует renderPanelSections: строки показывают текущие значения,
+           а отдельного экрана «Настройки» нет с 24 сентября 2026 года (решение владельца:
+           меню и так короткое). -->
+      <div id="cgSections"></div>
+      <!-- Поддержка и «О приложении» — служебные, поэтому внизу меню, неброско, в один ряд
+           (решение владельца, 24 сентября 2026 года). В настройках их больше нет. -->
+      <div class="menu-minor">
+        <button class="menu-minor-btn" onclick="menuGo('support')"><span class="mi-slot" data-mi="help"></span>Поддержка</button>
+        <button class="menu-minor-btn" onclick="menuGo('about')"><span class="mi-slot" data-mi="star"></span>О приложении</button>
       </div>
     </div>
   </div>
@@ -98,16 +106,11 @@
     <div class="panel-body search-results" id="searchResults"></div>
   </div>
 
-  <!-- НАСТРОЙКИ — корень взрослой зоны.
+  <!-- (экран «Настройки» убран) — корень взрослой зоны.
        Строки собираются в renderPanelSections() из данных: вид строки задан один раз
        в общих компонентах (app-1-state.js), здесь остаётся только каркас экрана. -->
   <!-- Затемнение доски под выдвижной панелью; нажатие по нему закрывает панель -->
   <div class="drawer-dim" id="drawerDim" onclick="closeCaregiverPanel()"></div>
-  <div class="screen" id="caregiver-panel">
-    <div class="panel-header"><button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button><h2>Настройки</h2><button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button></div>
-    <div class="panel-body" id="cgSections"></div>
-    <input type="file" id="backupFile" accept="application/json,.json" style="display:none" onchange="importBackup(this)">
-  </div>
 
   <!-- РЕБЁНОК — имя и цвет, переход к другим детям. -->
   <div class="screen" id="child-screen">
@@ -119,44 +122,34 @@
     <div class="panel-body" id="childContent"></div>
   </div>
 
-  <!-- ОКНО И СТОЛБЕЦ — размер окна, листание, сторона столбца, домашняя папка -->
+  <!-- ДОСКА — размер окна, листание, картинки, подписи, тема, строка фразы, касание -->
   <div class="screen" id="access-screen">
     <div class="panel-header">
       <button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button>
-      <h2>Окно и столбец</h2>
+      <h2>Доска</h2>
       <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
     </div>
     <div class="panel-body" id="accessContent"></div>
   </div>
 
-  <!-- КАСАНИЕ — приспособления к касанию: срабатывание, удержание, игнор повтора -->
-  <div class="screen" id="touch-screen">
+  <!-- ПАНЕЛЬ КНОПОК — какие кнопки, сторона, любимая папка, удержание «Меню» -->
+  <div class="screen" id="side-screen">
     <div class="panel-header">
       <button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button>
-      <h2>Касание</h2>
+      <h2>Панель кнопок</h2>
       <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
     </div>
-    <div class="panel-body" id="touchContent"></div>
+    <div class="panel-body" id="sideContent"></div>
   </div>
 
-  <!-- КАК ЗВУЧИТ РЕЧЬ — голос, скорость, живой голос, озвучка -->
+  <!-- РЕЧЬ — голос, скорость, живой голос, озвучка, форма слова -->
   <div class="screen" id="speech-screen">
     <div class="panel-header">
       <button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button>
-      <h2>Как звучит речь</h2>
+      <h2>Речь</h2>
       <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
     </div>
     <div class="panel-body" id="speechContent"></div>
-  </div>
-
-  <!-- ЧТО ВИДИТ РЕБЁНОК — источник символов и их вид в одном месте -->
-  <div class="screen" id="look-screen">
-    <div class="panel-header">
-      <button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button>
-      <h2>Как выглядит доска</h2>
-      <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
-    </div>
-    <div class="panel-body" id="lookContent"></div>
   </div>
 
   <!-- PROFILES -->
@@ -167,6 +160,17 @@
       <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
     </div>
     <div class="panel-body" id="profilesListContent"></div>
+  </div>
+
+  <!-- РЕЗЕРВНОЕ КОПИРОВАНИЕ — подэкран профилей: копия всех профилей в файл и обратно -->
+  <div class="screen" id="backup-screen">
+    <div class="panel-header">
+      <button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button>
+      <h2>Резервное копирование</h2>
+      <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
+    </div>
+    <div class="panel-body" id="backupContent"></div>
+    <input type="file" id="backupFile" accept="application/json,.json" style="display:none" onchange="importBackup(this)">
   </div>
 
   <!-- ACTION MENU — «⋯» действия над строкой списка (профили, группы) -->
@@ -192,6 +196,9 @@
            Сетка живёт в «Как ребёнок нажимает». -->
       <button class="btn-full" id="profileModalSaveBtn" onclick="saveProfile()">Создать профиль</button>
       <button class="btn-full btn-secondary" onclick="closeModal('profileModal')">Отмена</button>
+      <!-- Копия одного профиля живёт здесь, в окне самого профиля; копия всех — на экране
+           «Резервное копирование» (решение владельца, 24 сентября 2026 года). -->
+      <button class="btn-full btn-secondary" id="profileExportBtn" style="display:none" onclick="exportProfile(editingProfileId)">Сохранить копию профиля</button>
       <button class="btn-full btn-danger" id="profileDeleteBtn" style="display:none" onclick="deleteProfile()">Удалить профиль</button>
     </div>
   </div>
@@ -299,7 +306,7 @@
       <!-- Smart field: глагол -->
       <div id="smartFieldVerb" style="display:none">
         <div class="smart-divider"></div>
-        <label class="form-label form-label-block">Как это звучит? <span class="form-label-hint">— проверьте</span></label>
+        <label class="form-label form-label-block">Формы глагола <span class="form-label-hint">— проверьте</span></label>
         <div class="verb-form-row"><span class="vfr-label">Я</span><input class="form-input vfr-input" id="vf_ya" placeholder=""></div>
         <div class="verb-form-row"><span class="vfr-label">Ты</span><input class="form-input vfr-input" id="vf_ty" placeholder=""></div>
         <div class="verb-form-row"><span class="vfr-label">Он / Она</span><input class="form-input vfr-input" id="vf_on" placeholder=""></div>
@@ -311,7 +318,7 @@
       <div id="smartFieldNoun" style="display:none">
         <div class="smart-divider"></div>
         <div class="form-field">
-          <label class="form-label">Куда идти? <span class="form-label-hint">— если это место (необязательно)</span></label>
+          <label class="form-label">Направление <span class="form-label-hint">— если это место (необязательно)</span></label>
           <input class="form-input" id="nounDirectionalInput" placeholder="например: в бассейн">
         </div>
         <div class="form-field">

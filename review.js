@@ -3,7 +3,7 @@
    1) переключатель экрана: телефон / горизонтальный планшет (рамка устройства);
    2) комментарии-пины «как в Фигме»: точка на экране + текст, список — в правой панели.
 
-   Хранение — localStorage (сервера у прототипа нет), плюс экспорт/импорт JSON.
+   Хранение — сервер комментариев, в localStorage лежат копия и очередь неотправленного.
    Привязка пина: (экран, режим устройства, ближайший скроллящийся контейнер,
    координаты в его контенте). Поэтому пин не уезжает при прокрутке списков. */
 (function () {
@@ -20,14 +20,21 @@
     tablet:     { w: 1194, h: 834, label: 'Планшет ↔︎', icon: '🖥', hint: '1194 × 834' }
   };
 
-  var LS_COMMENTS = 'razgovor-comments-v1';   // локальная копия (страховка)
+  // Режим ?comments=local держит свою копию и свою очередь: иначе тестовые правки
+  // для местного сервера при следующем обычном открытии уехали бы в общую стопку.
+  var LS_SUFFIX = isLocalPage() && wantsLocalComments() ? '-local' : '';
+  var LS_COMMENTS = 'razgovor-comments-v1' + LS_SUFFIX;   // локальная копия (страховка)
   var LS_UI = 'razgovor-review-ui-v1';
-  var LS_QUEUE = 'razgovor-comments-queue-v1'; // что не доехало до сервера
-  var LS_IDMAP = 'razgovor-comments-idmap-v1'; // локальный id → серверный
+  var LS_QUEUE = 'razgovor-comments-queue-v1' + LS_SUFFIX; // что не доехало до сервера
+  var LS_IDMAP = 'razgovor-comments-idmap-v1' + LS_SUFFIX; // локальный id → серверный
   var LS_AUTHOR = 'razgovor-review-author-v1';
 
+  // Экраны без своего заголовка в разметке; остальные подписываются по заголовку.
   var SCREEN_TITLES = {
-    'aac-main': 'Главный экран'
+    'aac-main': 'Главный экран',
+    'menu-screen': 'Меню',
+    'search-screen': 'Поиск',
+    'pick-screen': 'Выбор из списка'
   };
 
   // ---------- состояние ----------
@@ -44,7 +51,7 @@
     comments: []
   };
 
-  var frame, viewport, pinsLayer, toolbar, panel, listEl, countEls = [], hintEl, fileInput;
+  var frame, viewport, pinsLayer, toolbar, panel, listEl, countEls = [], hintEl;
 
   // ---------- хранилище ----------
   // Сервер — источник правды (комментарии общие для всех, кто открыл ссылку).
@@ -54,6 +61,7 @@
   var store = {
     mode: 'local',   // 'server' — есть API, 'local' — статичный хостинг/файл
     degraded: false, // сервер был, но сейчас не отвечает
+    lsBroken: false, // браузер отказался сохранять (память заполнена)
     author: ''
   };
 
@@ -64,7 +72,8 @@
     } catch (e) { return fallback; }
   }
   function lsSet(key, val) {
-    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+    try { localStorage.setItem(key, JSON.stringify(val)); return true; }
+    catch (e) { return false; }
   }
 
   function localComments() {
@@ -73,9 +82,22 @@
   }
   function saveComments() { lsSet(LS_COMMENTS, state.comments); }
 
+  // Очередь живёт в localStorage, а не только в памяти вкладки: две открытые
+  // вкладки пишут в одну очередь и не затирают правки друг друга. У каждой
+  // операции свой opId — по нему её и вычёркивают после отправки.
   var queue = [];
   var idMap = {};
-  function saveQueue() { lsSet(LS_QUEUE, queue); lsSet(LS_IDMAP, idMap); }
+  function saveQueue() {
+    store.lsBroken = !lsSet(LS_QUEUE, queue);
+    lsSet(LS_IDMAP, idMap);
+  }
+  function readQueue() {
+    if (store.lsBroken) return queue;              // хранилище врёт — верим памяти
+    var q = lsGet(LS_QUEUE, null);
+    var m = lsGet(LS_IDMAP, null);
+    if (m && typeof m === 'object') for (var k in m) if (!idMap[k]) idMap[k] = m[k];
+    return Array.isArray(q) ? q : queue;
+  }
   function realId(id) { return idMap[id] || id; }
 
   // Комментарии лежат там, откуда открыт макет: на своей машине — на своём сервере,
@@ -91,16 +113,31 @@
     var o = opts || {};
     o.cache = 'no-store';
     if (o.body) o.headers = { 'Content-Type': 'application/json' };
+    // Зависший запрос не должен держать очередь вечно.
+    var ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = ctl ? setTimeout(function () { ctl.abort(); }, 20000) : null;
+    if (ctl) o.signal = ctl.signal;
     return fetch(apiUrl(p), o).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      clearTimeout(timer);
+      if (!r.ok) { var err = new Error('HTTP ' + r.status); err.status = r.status; throw err; }
       return r.json();
-    });
+    }, function (e) { clearTimeout(timer); throw e; });
+  }
+  /** Сервер отказал насовсем (комментарий уже удалили, пустой текст): повтор не поможет. */
+  function isPermanent(err) {
+    var st = err && err.status;
+    return st >= 400 && st < 500 && st !== 408 && st !== 429;
   }
 
   /** Первая загрузка: пробуем сервер, иначе живём локально. */
   function initStore() {
-    queue = lsGet(LS_QUEUE, []) || [];
+    queue = lsGet(LS_QUEUE, []);
+    if (!Array.isArray(queue)) queue = [];
     idMap = lsGet(LS_IDMAP, {}) || {};
+    // Операции из прежних версий приходят без opId — выдаём, чтобы их можно было вычеркнуть.
+    var patched = false;
+    queue.forEach(function (op) { if (!op.opId) { op.opId = newId(); patched = true; } });
+    if (patched) saveQueue();
     store.author = (lsGet(LS_AUTHOR, '') || '').toString().slice(0, 60);
     state.comments = localComments();
     return apiFetch('api/comments').then(function (arr) {
@@ -116,10 +153,15 @@
 
   /** Свежие данные с сервера (опрос + после отправки очереди). */
   function refresh() {
-    if (store.mode !== 'server' || queue.length) return Promise.resolve();
+    if (store.mode !== 'server' || flushing || readQueue().length) return Promise.resolve();
+    var gen = editGen;
     return apiFetch('api/comments').then(function (arr) {
       store.degraded = false;
       if (!Array.isArray(arr)) return;
+      // Пока ответ шёл, здесь что-то поправили: ответ уже устарел и вернул бы
+      // удалённое или отменил «решено». Свежее придёт следующим опросом.
+      if (gen !== editGen || readQueue().length) return;
+      remapOpen();
       var changed = JSON.stringify(arr) !== JSON.stringify(state.comments);
       state.comments = arr;
       saveComments();
@@ -131,10 +173,43 @@
     });
   }
 
-  /** Отправка накопленных операций по порядку. Ошибка — прерываемся, повторим позже. */
+  /** Отправка накопленных операций по порядку. Сбой связи — прерываемся и повторим
+   *  позже. Отказ сервера насовсем — операцию выбрасываем, иначе она заперла бы
+   *  очередь навсегда. Отправка всегда одна: второй вызов ждёт первую. */
+  var flushing = null;
+  var editGen = 0;
   function flushQueue() {
-    if (store.mode !== 'server' || !queue.length) { renderStatus(); return Promise.resolve(); }
+    if (flushing) return flushing;
+    flushing = sendAll().then(function () {
+      flushing = null;
+      if (!queue.length) return refresh();
+      renderStatus();
+    });
+    return flushing;
+  }
+  function sendAll() {
+    queue = readQueue();
+    if (store.mode !== 'server' || !queue.length) return Promise.resolve();
     var op = queue[0];
+    return sendOp(op).then(function () {
+      store.degraded = false;
+      dropOp(op);
+      return sendAll();
+    }, function (err) {
+      if (isPermanent(err)) { dropOp(op); return sendAll(); }
+      store.degraded = true;                       // не выбрасываем: попробуем ещё раз
+    });
+  }
+  function dropOp(op) {
+    queue = readQueue().filter(function (o) { return o.opId !== op.opId; });
+    saveQueue();
+  }
+  /** Если id комментария сменился на серверный, открытое окошко идёт за ним. */
+  function remapOpen() {
+    if (state.openId && idMap[state.openId]) state.openId = idMap[state.openId];
+    if (state.focusId && idMap[state.focusId]) state.focusId = idMap[state.focusId];
+  }
+  function sendOp(op) {
     var req;
     var base = 'api/comments/' + encodeURIComponent(realId(op.id));
     if (op.op === 'create') {
@@ -154,23 +229,15 @@
     } else {
       req = apiFetch(base, { method: 'DELETE' });
     }
-    return req.then(function () {
-      queue.shift();
-      saveQueue();
-      store.degraded = false;
-      return flushQueue();
-    }).catch(function () {
-      store.degraded = true;                       // не выбрасываем: попробуем ещё раз
-      saveQueue();
-      renderStatus();
-    }).then(function () {
-      if (!queue.length) return refresh();
-    });
+    return req;
   }
 
   function pushOp(op) {
     // Копим всегда, даже если сервера сейчас нет: как только он появится,
     // очередь уедет сама. Ограничение — просто предохранитель от бесконечного роста.
+    editGen++;
+    op.opId = newId();
+    queue = readQueue();
     queue.push(op);
     if (queue.length > 1000) queue.splice(0, queue.length - 1000);
     saveQueue();
@@ -207,13 +274,17 @@
   }
 
   // ---------- помощники по DOM прототипа ----------
+  // Меню, настройки и поиск открываются панелью поверх доски, и доска под ними
+  // тоже остаётся «активной». Экран комментария — верхний: панель, если открыта.
   function activeScreenId() {
-    var el = document.querySelector('#phoneScreen .screen.active');
-    return el ? el.id : '';
+    var act = document.querySelectorAll('#phoneScreen .screen.active');
+    for (var i = act.length - 1; i >= 0; i--) if (act[i].id !== 'aac-main') return act[i].id;
+    return act.length ? act[0].id : '';
   }
   function screenTitle(id) {
     if (SCREEN_TITLES[id]) return SCREEN_TITLES[id];
     var sc = document.getElementById(id);
+    if (id && !sc) return 'Убранный экран (' + id + ')';
     var h = sc && sc.querySelector('h2, .onboarding-title, .intro-heading');
     var t = h && h.textContent.trim();
     return t || id || 'Экран';
@@ -292,7 +363,9 @@
   function pinPos(c) {
     if (!c.scroller) return { x: c.x, y: c.y, visible: true };
     var sc = resolvePath(c.scroller);
-    if (!sc) return { x: c.x, y: c.y, visible: true, lost: true };
+    // Списка, к которому привязан пин, больше нет: его координаты считаны внутри
+    // списка, и на макете пин встал бы мимо. Прячем; в панели он остаётся.
+    if (!sc) return { x: c.x, y: c.y, visible: false, lost: true };
     var fr = frame.getBoundingClientRect();
     var sr = sc.getBoundingClientRect();
     var s = scale();
@@ -338,10 +411,6 @@
       '<div class="rv-author">' +
         '<label for="rvAuthor">Подписывать как</label>' +
         '<input id="rvAuthor" type="text" maxlength="60" placeholder="ваше имя">' +
-      '</div>' +
-      '<div class="rv-panel-foot">' +
-        '<button type="button" class="rv-btn" id="rvExport">↓ Экспорт</button>' +
-        '<button type="button" class="rv-btn" id="rvImport">↑ Импорт</button>' +
       '</div>';
 
     listEl = document.getElementById('rvList');
@@ -364,8 +433,6 @@
       var b = e.target.closest('button[data-filter]');
       if (b) { state.filter = b.dataset.filter; saveUI(); renderPanel(); }
     });
-    document.getElementById('rvExport').addEventListener('click', exportJSON);
-    document.getElementById('rvImport').addEventListener('click', function () { fileInput.click(); });
 
     var authorInput = document.getElementById('rvAuthor');
     authorInput.value = store.author || '';
@@ -373,13 +440,6 @@
       store.author = authorInput.value.slice(0, 60);
       lsSet(LS_AUTHOR, store.author);
     });
-
-    fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = 'application/json,.json';
-    fileInput.style.display = 'none';
-    fileInput.addEventListener('change', importJSON);
-    document.body.appendChild(fileInput);
   }
 
   // ---------- переключатели ----------
@@ -400,7 +460,7 @@
       b.setAttribute('aria-pressed', String(b.dataset.device === mode));
     });
     fitScale();
-    // Сетка карточек считает высоту строк при отрисовке, поэтому после смены
+    // Боковой столбец подгоняется под высоту при отрисовке, поэтому после смены
     // рамки просим приложение перерисоваться так же, как при повороте устройства.
     try { window.dispatchEvent(new Event('resize')); } catch (e) {}
     renderPins();
@@ -410,8 +470,8 @@
   // ---------- «Начать сначала» ----------
   // Показывает прототип таким, каким его увидит человек, открывший приложение впервые:
   // стирает сохранённое состояние приложения и перезагружает страницу. Комментарии
-  // ревью, имя автора и настройки самого режима при этом остаются на месте — в отличие
-  // от адреса «?reset=1», который сносит вообще все ключи «razgovor*».
+  // ревью, имя автора и настройки самого режима при этом остаются на месте. Адрес
+  // «?reset=1» сносит больше (все ключи приложения и кэш), но ревью тоже не трогает.
   //
   // Подтверждение сделано вторым нажатием на ту же кнопку, а не окном браузера: окно
   // здесь чужеродно, а случайно стереть настроенный словарь не хочется.
@@ -439,6 +499,12 @@
       APP_KEYS.forEach(function (k) { localStorage.removeItem(k); });
     } catch (e) {}
     location.reload();
+  }
+
+  // Отступ под панель меняется плавно, и сразу после переключения его ещё не
+  // видно. Поэтому масштаб рамки пересчитываем и в конце этого перехода.
+  function onViewportTransition(e) {
+    if (e.target === viewport && e.propertyName === 'padding-right') { fitScale(); renderPins(); }
   }
 
   function setPanel(open) {
@@ -493,7 +559,9 @@
     if (state.swallow) {
       e.preventDefault();
       e.stopPropagation();
-      if (e.type === 'click') state.swallow = false;
+      // Мышь заканчивает жест кликом. Касание — отпусканием пальца: клика после
+      // него не будет, мы его уже отменили на touchstart.
+      if (e.type === 'click' || e.type === 'touchend') state.swallow = false;
       return;
     }
     if (!state.adding) return;
@@ -659,7 +727,15 @@
       alive[c.id] = true;
 
       if (!entry || entry.open !== open || entry.sig !== sig) {
+        // Открытое окошко пересобирается, если кто-то другой отметил ветку
+        // решённой: недописанный ответ переносим в новое поле.
+        var oldTa = entry && entry.open && open ? entry.wrap.querySelector('.rv-reply-input') : null;
         var wrap = pinNode(c, num);           // содержимое изменилось — пересобираем
+        var newTa = oldTa && wrap.querySelector('.rv-reply-input');
+        if (newTa && oldTa.value) {
+          newTa.value = oldTa.value;
+          if (document.activeElement === oldTa) setTimeout(function () { newTa.focus(); }, 0);
+        }
         if (entry && entry.wrap.parentNode) pinsLayer.replaceChild(wrap, entry.wrap);
         else pinsLayer.appendChild(wrap);
         pinCache[c.id] = { wrap: wrap, open: open, sig: sig };
@@ -946,13 +1022,17 @@
     var el = document.getElementById('rvStatus');
     if (!el) return;
     var cls, text, retry = false;
-    if (store.mode !== 'server' && queue.length) {
+    if (store.lsBroken && queue.length) {
+      cls = 'warn';
+      text = 'Память браузера заполнена. Не отправлено: ' + queue.length + ' — не закрывайте вкладку, пока не отправится.';
+      retry = store.mode === 'server';
+    } else if (store.mode !== 'server' && queue.length) {
       cls = 'warn';
       text = 'Сервер недоступен. Не отправлено: ' + queue.length + ' — всё цело в этом браузере, отправим сами, когда связь вернётся.';
       retry = true;
     } else if (store.mode !== 'server') {
       cls = 'local';
-      text = 'Только в этом браузере: сервер комментариев недоступен. Сохраните «Экспортом», чтобы не потерять.';
+      text = 'Только в этом браузере: сервер комментариев недоступен. Отправим сами, когда он появится.';
     } else if (queue.length) {
       cls = 'warn';
       text = 'Не доехало до сервера: ' + queue.length + '. Комментарии целы, отправим при связи.';
@@ -1071,7 +1151,11 @@
     });
     res.title = c.resolved ? 'Вернуть в открытые' : 'Отметить решённым';
     if (c.resolved) res.style.color = 'var(--rv-ok)';
-    var del = mkIconBtn('🗑', function (e) { e.stopPropagation(); removeComment(c.id); });
+    var del = mkIconBtn('🗑', function (e) {
+      e.stopPropagation();
+      if (repliesOf(c).length && !confirm('Удалить всю ветку вместе с ответами?')) return;
+      removeComment(c.id);
+    });
     del.classList.add('danger');
     del.title = 'Удалить';
     acts.appendChild(res); acts.appendChild(del);
@@ -1096,50 +1180,6 @@
       }
       renderPins(); renderPanel();
     }, 60);
-  }
-
-  // ---------- экспорт / импорт ----------
-  function exportJSON() {
-    var blob = new Blob([JSON.stringify(state.comments, null, 2)], { type: 'application/json' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'razgovor-comments.json';
-    a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
-  }
-  function importJSON(e) {
-    var f = e.target.files && e.target.files[0];
-    if (!f) return;
-    var r = new FileReader();
-    r.onload = function () {
-      try {
-        var arr = JSON.parse(String(r.result));
-        if (!Array.isArray(arr)) throw new Error('not an array');
-        var have = {};
-        state.comments.forEach(function (c) { have[(c.text || '') + '|' + c.screen + '|' + c.x] = true; });
-        var added = 0;
-        arr.forEach(function (c) {
-          if (!c || typeof c.text !== 'string') return;
-          if (have[(c.text || '') + '|' + c.screen + '|' + c.x]) return; // уже есть — не дублируем
-          var rec = {
-            id: newId(), screen: c.screen, mode: c.mode || 'mobile', anchor: c.anchor || null,
-            scroller: c.scroller || null, x: c.x, y: c.y, text: c.text,
-            author: c.author || null, resolved: !!c.resolved,
-            createdAt: c.createdAt || new Date().toISOString(),
-            replies: Array.isArray(c.replies) ? c.replies : []
-          };
-          state.comments.push(rec);
-          pushOp({ op: 'create', rec: rec });   // импорт тоже уезжает на сервер
-          added++;
-        });
-        saveComments(); renderPins(); renderPanel();
-        if (!added) alert('Новых комментариев в файле не нашлось.');
-      } catch (err) {
-        alert('Не удалось прочитать файл комментариев.');
-      }
-      fileInput.value = '';
-    };
-    r.readAsText(f);
   }
 
   /** 1 ответ / 2 ответа / 5 ответов */
@@ -1181,11 +1221,11 @@
     watchForServer();          // ждём сервер, если его не было при загрузке
     setInterval(function () {
       if (store.mode !== 'server') return;
-      if (queue.length) flushQueue(); else refresh();
+      if (readQueue().length) flushQueue(); else refresh();
     }, 15000);
     window.addEventListener('online', function () { flushQueue().then(refresh); });
     document.addEventListener('visibilitychange', function () {
-      if (!document.hidden) { if (queue.length) flushQueue(); else refresh(); }
+      if (!document.hidden) { if (readQueue().length) flushQueue(); else refresh(); }
     });
     // Предупреждаем, если вкладку закрывают с неотправленной очередью (данные
     // при этом не пропадут — лежат в localStorage и уедут при следующем заходе).
@@ -1204,20 +1244,23 @@
     hintEl = document.getElementById('reviewHint');
     if (!frame || !pinsLayer) return;
 
-    // initStore синхронно поднимает локальную копию (очередь, автора, комментарии),
-    // а дальше в фоне идёт на сервер за общими.
-    var ready = initStore();
-    buildChrome();
-
     var ui = loadUI();
     // Ревью — для просмотра в браузере на компьютере, и там оно включено всегда:
     // кнопок выхода и возврата нет, состояние «выключено» не запоминается (решение
     // владельца от 21 сентября 2026 года). На телефоне и в установленном PWA прототип
     // открывается как обычно; принудительно — ?review=1 / ?review=0.
     var standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-    var phone = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    var forced = /[?&]review=([01])/.exec(location.search);
+    // iPad в Safari представляется компьютером Mac; выдаёт его сенсорный экран.
+    var iPadAsMac = /Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1;
+    var phone = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || iPadAsMac;
+    var forced = /[?&]review=([01])(?=&|$)/.exec(location.search);
     var supported = forced ? forced[1] === '1' : (!standalone && !phone);
+
+    // initStore синхронно поднимает локальную копию (очередь, автора, комментарии),
+    // а дальше в фоне идёт на сервер за общими. Без режима ревью комментарии не
+    // нужны, и сервер зря не дёргаем.
+    var ready = supported ? initStore() : null;
+    buildChrome();
 
     state.device = DEVICES[ui.device] ? ui.device : 'mobile-h';
     state.filter = ui.filter || 'open';
@@ -1228,14 +1271,14 @@
     setPinsHidden(ui.pinsHidden === true);   // после setReview: он тоже зовёт renderPins
     renderPanel();
 
-    ready.then(function () {
+    if (ready) ready.then(function () {
       renderPins();
       renderPanel();
       startPolling();
     });
 
     // клики по рамке в режиме добавления — перехватываем до обработчиков прототипа
-    ['pointerdown', 'mousedown', 'click', 'touchstart'].forEach(function (t) {
+    ['pointerdown', 'mousedown', 'click', 'touchstart', 'touchend'].forEach(function (t) {
       frame.addEventListener(t, onFrameCapture, true);
     });
 
@@ -1269,6 +1312,7 @@
     });
 
     window.addEventListener('resize', function () { fitScale(); setPanel(state.panelOpen); scheduleSync(); });
+    viewport.addEventListener('transitionend', onViewportTransition);
     frame.addEventListener('scroll', scheduleSync, true);
 
     // Наблюдаем только за прототипом (не за своим слоем пинов — иначе бесконечный цикл).

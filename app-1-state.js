@@ -14,8 +14,9 @@
 if(typeof location!=='undefined' && new URLSearchParams(location.search).get('reset')==='1'){
   window.__resetting = true;
   try{
-    // localStorage: сносим все ключи приложения (razgovor-*), чужое не трогаем
-    Object.keys(localStorage).forEach(k=>{ if(/^razgovor/i.test(k)) localStorage.removeItem(k); });
+    // localStorage: сносим все ключи приложения (razgovor-*), чужое не трогаем.
+    // Комментарии ревью и их неотправленная очередь — не приложение: их не трогаем.
+    Object.keys(localStorage).forEach(k=>{ if(/^razgovor/i.test(k) && !/^razgovor-(comments|review)-/i.test(k)) localStorage.removeItem(k); });
     // service worker и кэши — «пожар и забыли»: не ждём, страница всё равно уходит
     if('serviceWorker' in navigator){
       navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{});
@@ -24,8 +25,9 @@ if(typeof location!=='undefined' && new URLSearchParams(location.search).get('re
       caches.keys().then(ks=>ks.forEach(k=>caches.delete(k))).catch(()=>{});
     }
   }catch(e){}
-  // уходим на адрес без query, чтобы обновление не сбрасывало снова
-  location.replace(location.origin + location.pathname);
+  // уходим на адрес без reset, чтобы обновление не сбрасывало снова; выбор
+  // стопки комментариев (?comments=local) сохраняем
+  location.replace(location.origin + location.pathname + (/[?&]comments=local\b/.test(location.search) ? '?comments=local' : ''));
 }
 
 // ===== STATE =====
@@ -35,7 +37,7 @@ if(typeof location!=='undefined' && new URLSearchParams(location.search).get('re
 // settings из SETTINGS_KEYS). Больше не нужно дублировать имя поля в двух местах.
 // Временные поля (экран, черновик карточки, режим показа) — отдельно, ниже в S.
 const SETTINGS_DEFAULTS = {
-  gridSize:15,           // «картинок на экран»: одно из двенадцати значений GRID_SIZES (core.js), окно на матрицу папки
+  gridSize:12,           // «картинок на экран»: одно из семи значений GRID_SIZES (core.js), окно на матрицу папки
   homeFolder:'root',     // куда ведёт «Домой»; помощник может назначить домом любую папку
   sideColumn:'right',    // 'right' | 'left' — с какой стороны боковой столбец служебных кнопок
   sideOn:true,           // боковой столбец показан; выключен — остаётся только «Меню» в углу
@@ -44,7 +46,7 @@ const SETTINGS_DEFAULTS = {
   mistakePhrase:'Я допустил ошибку',   // что говорит кнопка «Я допустил ошибку»
   shareAs:'image',       // «Поделиться»: 'image' — картинкой, 'text' — текстом
   theme:'light',         // 'light' | 'dark'
-  swipePages:false,      // true — страницы окна листаются свайпом; false — стрелками в столбце
+  paging:'both',         // как листать страницы: 'both' — свайпом и стрелками (по умолчанию), 'buttons' — только стрелками, 'swipe' — только свайпом
   childBuilds:false,     // true — «говорящий строит форму сам»: движок НЕ склоняет, устройство говорит ровно то, что выложено
   imageLibrary:'arasaac',// единственный источник символов
   arasaacColor:true,     // true — цветные, false — чёрно-белые (графичные)
@@ -145,8 +147,10 @@ function uiRow(o){
   const cls   = 'cg-item' + (o.cls?' '+o.cls:'');
   if(o.href) return `<a class="${cls}" href="${o.href}"${id}>${main}</a>`;
   const click = (typeof o.go==='string' ? o.go : '') || o.action || '';
-  if(o.foot) return `<div class="${cls} cg-item-stack"${id}><div class="cgi-main" onclick="${click}">${main}</div><div class="cgi-foot">${o.foot}</div></div>`;
-  return `<div class="${cls}" onclick="${click}"${id}>${main}</div>`;
+  // Атрибут onclick ставим только строке с действием: по нему стили решают, подсвечивать ли нажатие.
+  const on    = click ? ` onclick="${click}"` : '';
+  if(o.foot) return `<div class="${cls} cg-item-stack"${id}><div class="cgi-main"${on}>${main}</div><div class="cgi-foot">${o.foot}</div></div>`;
+  return `<div class="${cls}"${on}${id}>${main}</div>`;
 }
 
 // Строка с переключателем. Состояние берётся из настройки, обработчик один на все.
@@ -162,7 +166,7 @@ function uiToggle(o){
 function uiSegment(o){
   const icon = o.icon ? `<div class="cgi-icon" data-mi="${o.icon}"></div>` : '';
   const desc = o.desc ? `<div class="cgi-desc">${o.descHtml?o.desc:esc(o.desc)}</div>` : '';
-  const opts = o.options.map(x=>`<div class="gs-opt${x.active?' active':''}" onclick="${x.action}">${x.html||esc(x.label)}</div>`).join('');
+  const opts = o.options.map(x=>`<div class="gs-opt${x.html?' gs-opt-card':''}${x.active?' active':''}" onclick="${x.action}">${x.html||esc(x.label)}</div>`).join('');
   return `<div class="cg-item cg-item-stack">
     <div class="cgi-main">${icon}<div class="cgi-text"><div class="cgi-title">${esc(o.title)}</div>${desc}</div></div>
     <div class="gs-options">${opts}</div></div>`;
@@ -297,7 +301,8 @@ function catClass(w){
 
 // ===== СЛОВАРЬ (изменяемый) =====
 // Стартовый словарь устроен как у Avaz: корень из папок, в каждой папке матрица
-// 4 ряда × N столбцов (форма данных описана в core.js рядом с GRID_SIZES). Первый
+// N столбцов × 8 рядов, стартовые папки заполняют четыре (форма данных описана в core.js
+// рядом с GRID_SIZES). Первый
 // столбец папки занимают зачины: «я хочу», «мне нравится», «это», «мне не нравится».
 // Папка «Действия» связанная: лежит в корне и внутри «Еды», «Людей» и «Мест», и это
 // одна и та же папка; внутри тематических папок часть её слов скрыта «только здесь».
@@ -305,7 +310,7 @@ function catClass(w){
 const W=(text,lemma,pos,extra)=>Object.assign({text,lemma,pos},extra||{});
 const P=(text,extra)=>W(text,text,'phrase',Object.assign({isPhrase:true},extra||{}));
 const F=(folder,hide)=>{ const o={folder}; if(hide&&hide.length){ o.hide={}; hide.forEach(k=>o.hide[k]=true); } return o; };
-// Из рядов (массив из четырёх массивов, null это пустая клетка) в объект клеток «р:с»
+// Из рядов (массив массивов, null это пустая клетка) в объект клеток «р:с»
 function M(rows){ const cells={}; rows.forEach((row,r)=>row.forEach((cell,c)=>{ if(cell) cells[cellKey(r,c)]=JSON.parse(JSON.stringify(cell)); })); return cells; }
 // Зачины: с них начинается высказывание. «Я хочу» хранится одной карточкой из двух
 // частей, чтобы движок склонял следующее слово («я хочу сока»).
@@ -428,8 +433,10 @@ function symbolStub(){
 const arasaacTried = new Set();
 async function ensureSymbolsFor(words, rerender){
   if(S.imageLibrary!=='arasaac') return;
+  // Слово со встроенной картинкой не ищем и не помечаем как «пробовали»: в чёрно-белом
+  // режиме встроенной копии нет (localPictoUrl даёт null), и тогда его нужно искать в сети.
   const need=[...new Set((words||[]).map(w=>picKey(w))
-    .filter(l=>l && ARASAAC_IDS[l]===undefined && !arasaacTried.has(l)))];
+    .filter(l=>l && !localPictoUrl(l) && ARASAAC_IDS[l]===undefined && !arasaacTried.has(l)))];
   if(!need.length) return;
   need.forEach(l=>arasaacTried.add(l));
   await Promise.all(need.map(l=>fetchArasaacId(l).catch(()=>null)));
@@ -494,7 +501,7 @@ function catIconHTML(c){
 function ensureCatPictos(cats, rerender){
   const need=[...new Set((cats||[]).filter(c=>c&&!c.picto)
     .map(c=>folderPicKey(c))
-    .filter(l=>l && !LOCAL_PICTOS.has(l) && ARASAAC_IDS[l]===undefined && !arasaacTried.has(l)))];
+    .filter(l=>l && !localPictoUrl(l) && ARASAAC_IDS[l]===undefined && !arasaacTried.has(l)))];
   if(!need.length) return;
   need.forEach(l=>arasaacTried.add(l));
   Promise.all(need.map(l=>fetchArasaacId(l).catch(()=>null))).then(()=>{ if(typeof rerender==='function') rerender(); });
@@ -522,8 +529,9 @@ function persistSoon(){ clearTimeout(_araSaveT); _araSaveT=setTimeout(persist, 8
 const ARASAAC_RETRY_MS=60000;
 const arasaacFailedAt={};
 async function fetchArasaacId(lemma) {
-  // Картинка лежит внутри приложения — запрос наружу не нужен и не делается.
-  if (LOCAL_PICTOS.has(lemma)) return null;
+  // Картинка лежит внутри приложения и будет показана — запрос наружу не нужен.
+  // В чёрно-белом режиме встроенная цветная копия не годится, и слово ищем в сети как любое.
+  if (localPictoUrl(lemma)) return null;
   if (lemma in ARASAAC_IDS) return ARASAAC_IDS[lemma];
   const failed=arasaacFailedAt[lemma];
   if (failed && Date.now()-failed < ARASAAC_RETRY_MS) return null;

@@ -20,7 +20,14 @@ function renderProfiles(){
     desc:gridSizeLabel(p.active ? S.gridSize : ((p.settings&&p.settings.gridSize)||GRID_DEFAULT)),
     radio:!!p.active, action:`switchProfile(${p.id})`,
     trailHtml:`<button class="icon-btn" data-mi="edit" onclick="event.stopPropagation();openEditProfileModal(${p.id})" aria-label="Изменить профиль «${esc(p.name)}»"></button>`}));
-  el.innerHTML = uiSection('', rows) + '<button class="btn-full" onclick="openNewProfileModal()">Новый профиль</button>';
+  // Внизу экрана неброский ряд из двух кнопок, как в меню: «Резервное копирование» ведёт
+  // на подэкран с копией всех профилей, «Удалить все данные» стирает всё. Это действия над
+  // профилями, а не настройки (решение владельца, 24 сентября 2026 года).
+  const minor=`<div class="menu-minor">
+    <button class="menu-minor-btn" onclick="openBackup()"><span class="mi-slot" data-mi="copy"></span>Резервное копирование</button>
+    <button class="menu-minor-btn is-danger" onclick="wipeAllData()"><span class="mi-slot" data-mi="trash"></span>Удалить все данные</button>
+  </div>`;
+  el.innerHTML = uiSection('', rows) + '<button class="btn-full" onclick="openNewProfileModal()">Новый профиль</button>' + minor;
   if(!profiles.length) el.innerHTML='<div class="ui-empty">Нет профилей</div>';
   renderIcons(el); a11yEnhance(el);   // карточки профилей операбельны (R-I1)
 }
@@ -83,6 +90,7 @@ function openNewProfileModal(){
   document.getElementById('profileModalTitle').textContent='Новый профиль';
   document.getElementById('profileModalSaveBtn').textContent='Создать';
   document.getElementById('profileDeleteBtn').style.display='none';
+  document.getElementById('profileExportBtn').style.display='none';
   openModal('profileModal');
 }
 
@@ -93,6 +101,7 @@ function openEditProfileModal(id){
   document.getElementById('profileModalTitle').textContent='Имя профиля';
   document.getElementById('profileModalSaveBtn').textContent='Сохранить';
   document.getElementById('profileDeleteBtn').style.display='block';
+  document.getElementById('profileExportBtn').style.display='block';
   openModal('profileModal');
 }
 
@@ -106,7 +115,7 @@ function saveProfile(){
   } else {
     const isFirst=profiles.length===0;
     // Новый профиль получает свой словарь: первый — текущий, остальные — чистый по
-    // умолчанию. Настройки у нового профиля тоже по умолчанию: окно 15 картинок.
+    // умолчанию. Настройки у нового профиля тоже по умолчанию: окно 12 картинок.
     profiles.push({id:nextProfileId++, name, active:isFirst, vocab: isFirst ? snapshotVocab() : freshVocab()});
     if(isFirst){S.selectedWords=[];renderBoard();}
     showToast('Профиль «'+name+'» создан');
@@ -120,9 +129,8 @@ function saveProfile(){
 }
 
 // Полное стирание данных профиля: словарь, настройки и сам профиль.
-// После него приложение открывается как в первый раз.
 function wipeAllData(name){
-  confirmDialog('Удалить все данные'+(name?' профиля «'+name+'»':'')+'?\n\nСловарь и настройки будут стёрты без возможности вернуть. Приложение откроется как в первый раз.', ()=>{
+  confirmDialog('Удалить все данные'+(name?' профиля «'+name+'»':'')+'?\n\nСловарь и настройки будут стёрты без возможности вернуть. Приложение откроется заново со словарём и настройками по умолчанию.', ()=>{
     try{ Object.keys(localStorage).forEach(k=>{ if(/^razgovor/i.test(k)) localStorage.removeItem(k); }); }catch(e){}
     location.replace(location.pathname);
   });
@@ -226,6 +234,29 @@ window.addEventListener('storage', e=>{
 // памяти этого браузера. Чистка данных, переустановка или новый планшет стирают
 // персональную доску безвозвратно. Файл-копия — единственный способ её сохранить
 // и перенести. Формат — тот же, что и в хранилище, плюс отметка о времени.
+// Подэкран «Резервное копирование»: копия всех профилей. Копия одного профиля лежит в
+// окне профиля, а загрузка у обеих общая: приложение само смотрит, что в файле.
+function openBackup(){ renderBackup(); panelGo('backup-screen'); }
+function renderBackup(){
+  const el=document.getElementById('backupContent'); if(!el) return;
+  el.innerHTML = uiSection('', [
+    uiRow({icon:'copy', title:'Сохранить копию в файл', desc:'Все профили: словари, фото и настройки — в файл на устройство', action:'exportBackup()'}),
+    uiRow({icon:'build', title:'Загрузить копию из файла', desc:'Копия всех профилей заменит текущие. Копия одного профиля добавится рядом с ними', action:"document.getElementById('backupFile').click()"}),
+  ]) + `<div class="form-hint">Копию одного профиля можно сохранить в его окне: карандаш рядом с именем, затем «Сохранить копию профиля».</div>`;
+  renderIcons(el); a11yEnhance(el);
+}
+
+function downloadJson(payload, filename){
+  const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function todayStamp(){ return new Date().toISOString().slice(0,10); }
+
+// Копия всех профилей: сохранёнка целиком, как она лежит на устройстве.
 function exportBackup(){
   persistNow();
   const raw=localStorage.getItem(STORE_KEY);
@@ -234,16 +265,65 @@ function exportBackup(){
   try{ payload=JSON.parse(raw); }catch(e){ showToast('Не удалось прочитать данные'); return; }
   payload.backupVersion=1;
   payload.backupAt=new Date().toISOString();
-  const who=(profiles.find(p=>p.active)||{}).name||'профиль';
-  const day=new Date().toISOString().slice(0,10);
-  const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=`Разговор — ${who} — ${day}.json`;
-  a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-  showToast('Копия сохранена в файл');
+  downloadJson(payload, `Разговор — все профили — ${todayStamp()}.json`);
+  showToast('Копия всех профилей сохранена в файл');
 }
+
+// Копия одного профиля: имя, словарь с фото, настройки и кэш картинок. Нужна, чтобы
+// специалист отдал родителю одного ребёнка, а не всех (спецификация, раздел 8, «Профили»).
+function profileSnapshot(p){
+  return p.active
+    ? { name:p.name, vocab:snapshotVocab(), settings:snapshotSettings() }
+    : { name:p.name, vocab:JSON.parse(JSON.stringify(p.vocab||{})), settings:JSON.parse(JSON.stringify(p.settings||{})) };
+}
+function exportProfile(id){
+  const p=profiles.find(x=>x.id===id); if(!p) return;
+  persistNow();
+  const payload={ razgovorProfile:1, backupVersion:1, backupAt:new Date().toISOString(), profile:profileSnapshot(p), arasaacIds:ARASAAC_IDS };
+  downloadJson(payload, `Разговор — ${p.name} — ${todayStamp()}.json`);
+  closeModal('profileModal');
+  showToast('Копия профиля «'+p.name+'» сохранена в файл');
+}
+
+// Свободное имя: «Миша», занято — «Миша (2)», «Миша (3)»…
+function uniqueProfileName(name){
+  if(!profiles.some(p=>p.name===name)) return name;
+  let n=2; while(profiles.some(p=>p.name===`${name} (${n})`)) n++;
+  return `${name} (${n})`;
+}
+
+// Файл с одним профилем. Ничего не стирает молча: профиль добавляется рядом, а при
+// совпадении имени помощник выбирает сам — добавить второй или заменить существующий.
+function importProfileFile(data){
+  const src=data.profile||{};
+  const name=String(src.name||'').trim()||'Профиль';
+  if(!src.vocab || typeof src.vocab!=='object'){ showToast('В файле нет словаря профиля'); return; }
+  const when=data.backupAt ? new Date(data.backupAt).toLocaleString('ru-RU') : 'без даты';
+  const mergeIds=()=>{ const ids=data.arasaacIds; if(ids && typeof ids==='object') Object.keys(ids).forEach(k=>{ if(!(k in ARASAAC_IDS)) ARASAAC_IDS[k]=ids[k]; }); };
+  const finish=msg=>{ mergeIds(); persist(); renderProfiles(); renderActiveProfileBadge(); showToast(msg); };
+  const add=finalName=>{
+    const p={ id:nextProfileId++, name:finalName, active:false, vocab:JSON.parse(JSON.stringify(src.vocab)), settings:JSON.parse(JSON.stringify(src.settings||{})) };
+    migrateProfile(p, freshVocab(), LEGACY_CAT_ORDER);
+    profiles.push(p);
+    finish('Профиль «'+finalName+'» добавлен');
+  };
+  const same=profiles.find(p=>p.name===name);
+  const replace=()=>{
+    same.vocab=JSON.parse(JSON.stringify(src.vocab)); same.settings=JSON.parse(JSON.stringify(src.settings||{}));
+    migrateProfile(same, freshVocab(), LEGACY_CAT_ORDER);
+    if(same.active){ adoptProfile(same); renderBoard(); renderStrip(); }
+    finish('Профиль «'+name+'» заменён копией');
+  };
+  if(!same){
+    confirmDialog(`Добавить профиль «${name}» из копии от ${when}?\n\nТекущие профили не изменятся.`, ()=>add(name), {title:'Загрузить копию профиля', okLabel:'Добавить', danger:false});
+    return;
+  }
+  openActionMenu(`Профиль «${name}» уже есть`, [
+    {label:`Добавить рядом как «${uniqueProfileName(name)}»`, fn:()=>add(uniqueProfileName(name))},
+    {label:'Заменить существующий', danger:true, fn:()=>confirmDialog(`Заменить словарь и настройки профиля «${name}» копией от ${when}?\n\nТекущие данные этого профиля будут стёрты.`, replace, {title:'Заменить профиль', okLabel:'Заменить'})},
+  ]);
+}
+
 function importBackup(input){
   const f=input.files && input.files[0];
   input.value='';
@@ -252,10 +332,13 @@ function importBackup(input){
   r.onload=()=>{
     let data;
     try{ data=JSON.parse(String(r.result)); }catch(e){ showToast('Это не файл копии «Разговора»'); return; }
+    // Кнопка одна на оба вида копии: приложение само смотрит, что в файле.
+    if(data && data.razgovorProfile && data.profile){ importProfileFile(data); return; }
+    if(data && data.razgovorFolder){ showToast('Это копия папки. Загрузите её через «Опции папки» в правке доски'); return; }
     if(!data || (!Array.isArray(data.profiles) && !data.V)){ showToast('В файле нет словаря — похоже, копия от другого приложения'); return; }
     const when=data.backupAt ? new Date(data.backupAt).toLocaleString('ru-RU') : 'без даты';
     const names=(data.profiles||[]).map(p=>p.name).filter(Boolean).join(', ')||'—';
-    confirmDialog(`Восстановить копию от ${when}?\nПрофили в файле: ${names}\n\nТекущий словарь, фото и настройки будут заменены.`, ()=>{
+    confirmDialog(`Восстановить копию всех профилей от ${when}?\nПрофили в файле: ${names}\n\nВсе текущие профили, их словари, фото и настройки будут заменены.`, ()=>{
       if(_persistT){ clearTimeout(_persistT); _persistT=null; }  // отложенная запись — отменить
       saveBlocked=true;                                          // и больше ничего не писать
       try{
@@ -339,9 +422,8 @@ showScreen('aac-main');
 renderBoard();
 renderStrip();   // недосказанная фраза возвращается на доску
 
-// Поворот планшета и смена размера окна: высота строк сетки считается при отрисовке,
-// поэтому без перерисовки карточки остаются под прежний экран. Ждём, пока поворот
-// закончится, и рисуем заново.
+// Поворот планшета и смена размера окна: клетки сетки тянутся сами, а боковой столбец
+// подгоняется под высоту при отрисовке. Ждём, пока поворот закончится, и рисуем заново.
 let _resizeT=null;
 function onViewportChange(){
   clearTimeout(_resizeT);

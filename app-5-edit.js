@@ -622,16 +622,24 @@ function bindHold(id, fn){
 bindHold('iconPanel', openMenu);
 
 // ===== МЕНЮ =====
-// Пять пунктов, как у Avaz без «Инструментов»: Настройки, Правка словаря, Поиск,
-// Профили, Поддержка. Список лежит в разметке (index.html, #menu-screen). Меню —
+// Меню плоское: «Правка доски» и «Поиск карточек», под ними группа «Настройки» из трёх строк,
+// «Доска», «Панель кнопок», «Речь». Отдельного экрана «Настройки» нет с 24 сентября
+// 2026 года (решение владельца: меню и так короткое). Внизу неброский ряд из двух
+// кнопок, «Поддержка» и «О приложении». Профили не пункт, а шапка: слева стоит имя
+// текущего профиля, нажатие ведёт на их список. Строки рисует renderPanelSections. Список пунктов лежит в разметке (index.html, #menu-screen). Меню —
 // первый экран панели: из него «‹» на любом экране возвращает сюда, «✕» закрывает всё.
-function openMenu(){ panelTrail.length=0; showScreen('menu-screen','slide-right'); }
+function openMenu(){ panelTrail.length=0; renderMenuProfile(); renderPanelSections(); showScreen('menu-screen','slide-right'); }
+function renderMenuProfile(){
+  const el=document.getElementById('menuProfileName'); if(!el) return;
+  const p=(typeof profiles!=='undefined') && profiles.find(x=>x.active);
+  el.textContent = p ? p.name : 'Профиль';
+}
 function menuGo(what){
-  if(what==='settings') panelGo('caregiver-panel');
-  else if(what==='edit'){ closeCaregiverPanel(); enterEditMode(); }
+  if(what==='edit'){ closeCaregiverPanel(); enterEditMode(); }
   else if(what==='search') openSearch();
   else if(what==='profiles') openProfiles();
   else if(what==='support') openSupport();
+  else if(what==='about') openAbout();
 }
 
 // ===== МНОГО СЛОВ ОДНОВРЕМЕННО =====
@@ -653,14 +661,14 @@ function saveManyWords(){
 // Пока заглушка: адрес почты и ответы на вопросы по тому, что уже есть в продукте.
 const SUPPORT_EMAIL='razgovor@yandex.ru';
 const FAQ=[
-  ['Как сделать карточки крупнее или мельче?', 'Меню → Настройки → «Окно и столбец» → «Картинок на экран». Место карточек в папке при этом не меняется: окно показывает часть матрицы, остальное листается стрелками.'],
-  ['Как добавить своё слово или папку?', 'Меню → Правка словаря. Нажмите плюс в пустой клетке или «Добавить новое» в полосе сверху и выберите: слово, много слов сразу, папку или связать существующую папку.'],
+  ['Как сделать карточки крупнее или мельче?', 'Меню → «Доска» → «Карточек на доске». Место карточек в папке при этом не меняется: доска показывает часть папки, остальное листается стрелками.'],
+  ['Как добавить своё слово или папку?', 'Меню → Правка доски. Нажмите плюс в пустой клетке или «Добавить новое» в полосе сверху и выберите: слово, много слов сразу, папку или связать существующую папку.'],
   ['Почему на экране остаются пустые места?', 'Так задумано: у каждой карточки постоянное место, и удалённая или скрытая карточка оставляет клетку пустой. Тот, кто говорит карточками, запоминает дорогу пальца к слову, и она не должна меняться.'],
-  ['Как открыть слова, которых нет в папке?', 'Кнопка «Главные слова» в боковом столбце открывает 24 частых слова с любого места. Кнопка «Поиск» находит слово по всему словарю.'],
-  ['Почему фраза звучит не так, как написано на карточках?', 'Движок достраивает грамматику: «я хочу» и «сок» звучат как «я хочу сока». Если это мешает, в Настройках переключите «Кто строит форму слова» на «Говорящий сам».'],
-  ['Как перенести доску на другой планшет?', 'Меню → Настройки → «Сохранить копию в файл» кладёт файл в загрузки. На другом устройстве выберите «Загрузить копию из файла» и укажите его. Облака и аккаунтов у приложения нет.'],
+  ['Как открыть слова, которых нет в папке?', 'Кнопка «Главные слова» на панели кнопок открывает 24 частых слова с любого места. Кнопка «Поиск» находит слово по всему словарю.'],
+  ['Почему фраза звучит не так, как написано на карточках?', 'Движок достраивает грамматику: «я хочу» и «сок» звучат как «я хочу сока». Если это мешает, в Меню → «Речь» переключите «Склонение слов» на «Говорящий сам».'],
+  ['Как перенести доску на другой планшет?', 'Меню → имя профиля вверху → «Резервное копирование» → «Сохранить копию в файл» кладёт в загрузки копию всех профилей. Один профиль: карандаш рядом с его именем → «Сохранить копию профиля». На другом устройстве выберите «Загрузить копию из файла» и укажите файл: копия всех профилей заменит текущие, копия одного добавится рядом. Облака и аккаунтов у приложения нет.'],
   ['Как сделать голос живее?', 'Поставьте «улучшенный» русский голос устройства: это бесплатно и работает без интернета. '+'iPhone и iPad: Настройки → Универсальный доступ → Устный контент → Голоса → Русский → Милена (улучшенный) Android: Настройки → Специальные возможности → Синтез речи → Google → установить русский Mac: Системные настройки → Универсальный доступ → Устная речь → Системный голос → Управление голосами'],
-  ['Как защитить настройки от случайного нажатия?', 'Меню → Настройки → раздел «Меню» → «Открывать удержанием». Тогда кнопку «Меню» надо держать две с половиной секунды.'],
+  ['Как защитить настройки от случайного нажатия?', 'Меню → «Панель кнопок» → «Открывать удержанием». Тогда кнопку «Меню» надо держать две с половиной секунды.'],
 ];
 function openSupport(){ renderSupport(); panelGo('support-screen'); }
 function renderSupport(){
@@ -703,46 +711,34 @@ function openPickList(title, items, onPick){
 }
 function pickListChoose(i){ const it=_pickItems[i]; if(it && _pickOnPick) _pickOnPick(it.id); panelBack(); }
 function openAccessSettings(){ renderAccess(); panelGo('access-screen'); }
-function openTouchSettings(){ renderTouch(); panelGo('touch-screen'); }
+function openSideSettings(){ renderSide(); panelGo('side-screen'); }
 // openSupport определён ниже, в разделе «Поддержка».
 function openSpeechSettings(){ renderSpeech(); panelGo('speech-screen'); }
-function openLookSettings(){ renderLook(); panelGo('look-screen'); }
 function openAbout(){ renderAbout(); panelGo('about-screen'); }
 function openProfiles(){ renderProfiles(); panelGo('profiles-screen'); }
 
 // ===== КОРЕНЬ ПАНЕЛИ =====
-function renderActiveProfileBadge(){ renderPanelSections(); }   // строка профиля живёт в секциях корня
+function renderActiveProfileBadge(){ renderPanelSections(); renderMenuProfile(); }   // строка профиля живёт в секциях корня и в шапке меню
 
 // Все строки панели описаны здесь данными и собраны общими компонентами.
 function renderPanelSections(){
   const el=document.getElementById('cgSections'); if(!el) return;
-  const lib=IMAGE_LIBS.find(l=>l.id===S.imageLibrary);
-  const libVal = S.imageLibrary==='arasaac' ? 'ARASAAC · '+(S.arasaacColor?'цветные':'ч/б') : (lib?lib.label:'');
-  const p=profiles.find(x=>x.active);
   el.innerHTML = [
-    // Строка профиля: имя и размер окна, ведёт на экран профиля
-    p ? uiSection('', [ uiRow({title:p.name, desc:gridSizeLabel(S.gridSize), go:'openChildScreen()'}) ]) : '',
-    uiSection('Как настроена доска', [
-      uiRow({icon:'grid', title:'Окно и столбец', desc:'Сколько картинок на экране, листание, боковой столбец, домашняя папка', value:String(S.gridSize), go:'openAccessSettings()'}),
-      uiRow({icon:'vibration', title:'Касание', desc:'Срабатывание по отпусканию или по нажатию, удержание, игнор повтора', value:S.touchOn?'Включено':'Выключено', go:'openTouchSettings()'}),
-      uiRow({icon:'speak', title:'Как звучит речь', desc:'Голос, скорость, живой голос', value:S.cloudVoice?'Живой голос':'Голос устройства', go:'openSpeechSettings()'}),
-      uiRow({icon:'images', title:'Как выглядит доска', desc:'Картинки, их вид, цвет части речи, движение', value:libVal, go:'openLookSettings()'}),
-      uiSegment({icon:'build', title:'Кто строит форму слова',
-        desc:'«Говорящий сам» — устройство говорит ровно то, что выложено, без склонения. «Движок» — достраивает падежи и согласование',
-        options:[{label:'Движок достраивает', active:!S.childBuilds, action:'setChildBuilds(false)'},
-                 {label:'Говорящий сам',      active:!!S.childBuilds, action:'setChildBuilds(true)'}]}),
+    // Строки профиля здесь нет: имя говорящего показывает шапка меню. Копии и стирание
+    // данных лежат на экране профилей, куда ведёт шапка.
+    uiSection('', [
+      uiRow({icon:'groups', title:'Правка доски', action:"menuGo('edit')"}),
+      uiRow({icon:'search', title:'Поиск карточек', action:"menuGo('search')"}),
     ]),
-    uiSection('Меню', [
-      uiToggle({id:'toggleHoldPanel', setting:'holdToOpenPanel', icon:'menu', title:'Открывать удержанием', on:S.holdToOpenPanel,
-                desc:'Кнопку «Меню» на доске нужно держать две с половиной секунды. Защищает настройки от случайного нажатия говорящего. Выключено — меню открывается сразу'}),
-    ]),
-    uiSection('Хозяйство', [
-      uiRow({icon:'profiles', title:'Профили', desc:'У каждого профиля свой словарь и свои настройки', value:profiles.length>1?`${profiles.length}`:'', go:'openProfiles()'}),
-      uiRow({icon:'images', title:'Сохранить копию в файл', desc:'Словарь, фото, профили и настройки — в файл на устройство', action:'exportBackup()'}),
-      uiRow({icon:'build', title:'Загрузить копию из файла', desc:'Вернуть ранее сохранённую копию', action:"document.getElementById('backupFile').click()"}),
-      uiRow({icon:'help', title:'Поддержка', desc:'Почта и ответы на частые вопросы', go:'openSupport()'}),
-      uiRow({icon:'star', title:'О приложении', desc:'Символы, версия, состояние сети', go:'openAbout()'}),
-      uiRow({icon:'other', title:'Удалить данные профиля', danger:true, desc:'Словарь и настройки — стереть без возможности вернуть', action:'wipeAllData(activeProfileName())'}),
+    // Три экрана: доска, панель кнопок, речь. Касание живёт на экране доски, «Открывать
+    // удержанием» на экране панели кнопок, «Склонение слов» на экране речи (решение владельца,
+    // 24 сентября 2026 года: настройки разложены по тому, к чему они относятся).
+    uiSection('Настройки', [
+      // Значения справа («80», «Показана», «Голос устройства») убраны по решению владельца
+      // 24 сентября 2026 года: они дублировали содержимое экранов и только шумели.
+      uiRow({icon:'grid', title:'Доска', desc:'Карточки, листание, картинки, подписи, тема, строка фразы, касание', go:'openAccessSettings()'}),
+      uiRow({icon:'menu', title:'Панель кнопок', desc:'Какие кнопки показывать, сторона, любимая папка, удержание «Меню»', go:'openSideSettings()'}),
+      uiRow({icon:'speak', title:'Речь', desc:'Голос, скорость, живой голос, форма слова', go:'openSpeechSettings()'}),
     ]),
   ].join('');
   renderIcons(el); a11yEnhance(el);
@@ -763,47 +759,110 @@ function renderChild(){
   renderIcons(el); a11yEnhance(el);
 }
 // ===== КАСАНИЕ И СЕТКА =====
-// Подпись размера окна: «15 картинок, 3 × 5».
-function gridSizeLabel(n){ const g=gridSize(n); return `${g.n} ${plural(g.n,'картинка','картинки','картинок')}, ${g.rows} × ${g.cols}`; }
+// Подпись размера окна: «12 карточек, 4 × 3» (столбцы × ряды).
+function gridSizeLabel(n){ const g=gridSize(n); return `${g.n} ${plural(g.n,'карточка','карточки','карточек')}, ${g.cols} × ${g.rows}`; }
 function renderAccess(){
   const el=document.getElementById('accessContent'); if(!el) return;
-  const sizes=GRID_SIZES.map(g=>`<div class="gs-opt gs-opt-size${g.n===S.gridSize?' active':''}" onclick="setGridSize(${g.n})"><b>${g.n}</b><small>${g.rows}×${g.cols}</small></div>`).join('');
+  const isAra=S.imageLibrary==='arasaac';
+  // Раздела «Откуда берутся картинки» нет: библиотека одна, ARASAAC, и выбор из одного
+  // пункта только занимал место (решение владельца, 23 сентября 2026 года).
+  const sizes=GRID_SIZES.map(g=>`<div class="gs-opt gs-opt-size${g.n===S.gridSize?' active':''}" onclick="setGridSize(${g.n})"><b>${g.n}</b><small>${g.cols}×${g.rows}</small></div>`).join('');
   el.innerHTML = [
-    uiSection('Сколько картинок на экране', [
+    uiSection('Карточек на доске', [
       `<div class="cg-item cg-item-stack">
-        <div class="cgi-text"><div class="cgi-title">Картинок на экран</div>
-        <div class="cgi-desc">Двенадцать готовых размеров. Место карточки в папке не меняется: окно показывает часть матрицы, остальное листается. Поставьте самый крупный размер, какой говорящий способен разглядеть и нажать, и потом не меняйте</div></div>
         <div class="gs-options gs-options-wrap">${sizes}</div>
         <div class="gs-preview"><div class="gs-preview-label">Предпросмотр: ${gridSizeLabel(S.gridSize)}</div><div class="gs-preview-grid" id="previewGrid"></div></div>
       </div>`,
     ]),
-    uiSection('Листание и столбец', [
-      uiSegment({title:'Как листать страницы папки',
-        desc:'Стрелками в боковом столбце или свайпом по окну. Со стрелками надёжнее при слабой моторике',
-        options:[{label:'Стрелками', active:!S.swipePages, action:'setSwipePages(false)'},
-                 {label:'Свайпом',   active:!!S.swipePages, action:'setSwipePages(true)'}]}),
+    uiSection('Движение по папкам', [
+      uiSegment({title:'Листание страниц',
+        desc:'Свайпом по доске, стрелками на панели кнопок или и так и так. Только стрелки надёжнее при слабой моторике: случайный жест не перевернёт страницу',
+        options:[{label:'Свайпом и стрелками', active:S.paging!=='buttons'&&S.paging!=='swipe', action:"setPaging('both')"},
+                 {label:'Только стрелками', active:S.paging==='buttons', action:"setPaging('buttons')"},
+                 {label:'Только свайпом',   active:S.paging==='swipe',   action:"setPaging('swipe')"}]}),
       uiToggle({id:'togglePathBar', setting:'pathBar', title:'Путь по папкам', on:S.pathBar!==false,
-                desc:'Строка над окном: «Домой › Еда › Блюда». Каждое звено нажимается и возвращает в ту папку. Выключите, если строка отвлекает или мешает по высоте'}),
+                desc:'Строка над доской: «Домой › Еда › Блюда». Каждое звено нажимается и возвращает в ту папку. Выключите, если строка отвлекает или мешает по высоте'}),
       uiRow({title:'Домашняя папка',
-        desc:'Куда ведёт «Домой». Выше домашней папки говорящий не поднимется: так на занятие остаётся одна тема',
+        desc:'Папка, в которую ведёт «Домой». Выше домашней папки говорящий не поднимется: так на занятие остаётся одна тема',
         value:folderLabel(homeId()), go:'openHomeFolderPick()'}),
     ]),
-    uiSection('Боковой столбец', [
-      uiToggle({id:'toggleSideOn', setting:'sideOn', title:'Показывать столбец', on:S.sideOn!==false,
-                desc:'Столбец служебных кнопок рядом с окном. Выключен — в углу остаётся только «Меню»'}),
-      uiSegment({title:'Где стоит столбец',
+    // Ниже — то, что до 24 сентября 2026 года лежало отдельным экраном «Вид доски»;
+    // владелец решил держать всё про доску в одном месте.
+    uiSection('Картинки', [
+      // Варианты показаны карточками-образцами, а не словами: помощник видит, как будет
+      // выглядеть карточка, и выбирает глазами (решение владельца, 24 сентября 2026 года).
+      isAra ? uiSegment({title:'Стиль картинок',
+        desc:'Чёрно-белые помогают при перегрузке цветом и при тренировке различения',
+        options:[sampleCardOpt('Цветные', '', !!S.arasaacColor, 'setArasaacColor(true)'),
+                 sampleCardOpt('Чёрно-белые', 'is-bw', !S.arasaacColor, 'setArasaacColor(false)')]}) : '',
+      uiSegment({title:'Цвет части речи',
+        options:[sampleCardOpt('Нет', 'mode-off', S.colorCode==='off', "setColorMode('off')"),
+                 sampleCardOpt('Рамка', 'mode-border', S.colorCode==='border', "setColorMode('border')"),
+                 sampleCardOpt('Полоска', 'mode-stripe', S.colorCode==='stripe', "setColorMode('stripe')"),
+                 sampleCardOpt('Фон', 'mode-fill', S.colorCode==='fill', "setColorMode('fill')")]}),
+    ]),
+    uiSection('Подпись карточки', [
+      uiSegment({title:'Место подписи',
+        desc:'Под картинкой или над ней',
+        options:[{label:'Под картинкой', active:S.captionPosition!=='above', action:"setCaptionPosition('below')"},
+                 {label:'Над картинкой', active:S.captionPosition==='above', action:"setCaptionPosition('above')"}]}),
+      uiSegment({title:'Размер подписи',
+        desc:'От «только картинка» до «только текст». Крупная подпись помогает тому, кто уже читает',
+        options:[{label:'Только картинка', active:S.captionSize==='none', action:"setCaptionSize('none')"},
+                 {label:'Маленькая', active:S.captionSize==='small', action:"setCaptionSize('small')"},
+                 {label:'Средняя', active:!['none','small','large','text'].includes(S.captionSize), action:"setCaptionSize('medium')"},
+                 {label:'Крупная', active:S.captionSize==='large', action:"setCaptionSize('large')"},
+                 {label:'Только текст', active:S.captionSize==='text', action:"setCaptionSize('text')"}]}),
+    ]),
+    uiSection('Тема и движение', [
+      uiSegment({title:'Тема',
+        desc:'Тёмная тема снижает яркость экрана: карточки остаются светлыми, всё вокруг темнеет',
+        options:[{label:'Светлая', active:S.theme!=='dark', action:"setTheme('light')"},
+                 {label:'Тёмная',  active:S.theme==='dark',  action:"setTheme('dark')"}]}),
+      uiToggle({id:'toggleAnimations', setting:'animations', title:'Анимации', on:S.animations,
+                desc:'Появление карточек и переходы. Выключены по умолчанию: так спокойнее и предсказуемее'}),
+    ]),
+    uiSection('Строка фразы', [
+      uiSegment({title:'Поделиться сообщением',
+        desc:'Картинкой — строка с карточками и текст фразы под ней. Текстом — только текст фразы',
+        options:[{label:'Картинкой', active:S.shareAs!=='text', action:"setShareAs('image')"},
+                 {label:'Текстом',   active:S.shareAs==='text', action:"setShareAs('text')"}]}),
+      uiSegment({title:'Место строки фразы и «Меню»',
+        desc:'Строка, в которую собираются слова, и кнопка «Меню» в углу панели кнопок. Сверху — как в книге, снизу — ближе к рукам',
+        options:[{label:'Сверху', active:S.stripPosition!=='bottom', action:"setStripPosition('top')"},
+                 {label:'Снизу',  active:S.stripPosition==='bottom', action:"setStripPosition('bottom')"}]}),
+    ]),
+    // Касание — здесь же, внизу экрана доски: приспособления действуют на карточки доски.
+    ...touchSectionsHtml(),
+    `<button class="btn-full btn-secondary" onclick="resetSensoryDefaults()">Вернуть спокойные умолчания</button>`,
+  ].join('');
+  renderGridPreview();
+  renderIcons(el); a11yEnhance(el);
+}
+// ===== ПАНЕЛЬ КНОПОК =====
+// Свой экран: какие кнопки стоят рядом с доской, с какой стороны, и защита кнопки «Меню».
+function renderSide(){
+  const el=document.getElementById('sideContent'); if(!el) return;
+  el.innerHTML = [
+    uiSection('', [
+      uiToggle({id:'toggleSideOn', setting:'sideOn', title:'Показывать панель кнопок', on:S.sideOn!==false,
+                desc:'Кнопки «Назад», «Домой», «Поиск» и другие рядом с доской. Выключена — в углу остаётся только «Меню»'}),
+      uiSegment({title:'Сторона',
         desc:'Ставьте со стороны ведущей руки',
         options:[{label:'Справа', active:S.sideColumn!=='left', action:"setSideColumn('right')"},
                  {label:'Слева',  active:S.sideColumn==='left', action:"setSideColumn('left')"}]}),
       ...Object.keys(SIDE_BUTTON_DEFS).map(k=>uiToggle({id:'toggleSide_'+k, icon:SIDE_BUTTON_DEFS[k].icon, title:SIDE_BUTTON_DEFS[k].label, on:(S.sideButtons||[]).includes(k),
         desc:{fav:'Открывает любимую папку', key:'Папка из 24 частых слов', alarm:'Короткий звуковой сигнал, чтобы позвать человека', mistake:'Говорит фразу из поля ниже', prev:'Стрелка назад по страницам папки', next:'Стрелка вперёд по страницам папки'}[k]||''})),
-      uiRow({title:'Любимая папка', desc:'Куда ведёт кнопка «Любимая папка»',
+      uiRow({title:'Любимая папка', desc:'Папка, которую открывает кнопка «Любимая папка»',
         value:folderLabel(V[S.favFolder]?S.favFolder:'quick'), go:'openFavFolderPick()'}),
-      `<div class="cg-item cg-item-stack"><div class="cgi-main"><div class="cgi-text"><div class="cgi-title">«Я допустил ошибку»: говорить как</div><div class="cgi-desc">Что произносит эта кнопка</div></div></div>
+      `<div class="cg-item cg-item-stack"><div class="cgi-main"><div class="cgi-text"><div class="cgi-title">«Я допустил ошибку»: говорить как</div><div class="cgi-desc">Фраза, которую произносит эта кнопка</div></div></div>
         <input class="form-input" id="mistakePhraseInput" value="${esc(S.mistakePhrase||'')}" placeholder="Я допустил ошибку" onchange="setMistakePhrase(this.value)"></div>`,
     ]),
+    uiSection('Меню', [
+      uiToggle({id:'toggleHoldPanel', setting:'holdToOpenPanel', icon:'menu', title:'Открывать удержанием', on:S.holdToOpenPanel,
+                desc:'Кнопку «Меню» на доске нужно держать две с половиной секунды. Защищает настройки от случайного нажатия говорящего. Выключено — меню открывается сразу'}),
+    ]),
   ].join('');
-  renderGridPreview();
   renderIcons(el); a11yEnhance(el);
 }
 // ===== КАСАНИЕ =====
@@ -817,24 +876,23 @@ const REPEAT_OPTIONS=[[0,'Нет'],[0.3,'0,3 с'],[0.5,'0,5 с'],[1,'1 с'],[2,'
 const FRAME_COLORS=[['#FFD900','Жёлтая'],['#E53935','Красная'],['#1E88E5','Синяя'],['#43A047','Зелёная'],['#111111','Чёрная']];
 const FRAME_WIDTHS=[2,4,6,8];
 const FRAME_RADII=[[0,'Нет'],[8,'Малое'],[16,'Среднее'],[24,'Большое']];
-function renderTouch(){
-  const el=document.getElementById('touchContent'); if(!el) return;
+function touchSectionsHtml(){
   const on=!!S.touchOn;
-  el.innerHTML = [
-    uiSection('', [
+  return [
+    uiSection('Касание', [
       uiToggle({id:'toggleTouchOn', setting:'touchOn', title:'Приспособления к касанию', on,
                 desc:'Пока выключено, карточка срабатывает при отпускании пальца, как обычная кнопка. Включите, чтобы подобрать срабатывание, удержание и защиту от повтора под руку говорящего'}),
     ]),
-    on ? uiSection('Как срабатывает карточка', [
-      uiSegment({title:'Когда срабатывает',
+    on ? uiSection('Срабатывание карточки', [
+      uiSegment({title:'Момент срабатывания',
         desc:'По отпусканию: можно доехать пальцем до нужной карточки и соскользнуть с ошибочной. По нажатию: надёжнее тем, у кого палец уезжает после касания',
         options:[{label:'По отпусканию', active:S.touchSelect!=='press', action:"setTouch('touchSelect','release')"},
                  {label:'По нажатию',    active:S.touchSelect==='press',  action:"setTouch('touchSelect','press')"}]}),
       uiSegment({title:'Удержание',
-        desc:'Сколько палец должен пробыть на карточке, чтобы касание засчиталось. Короткие случайные задевания не считаются. Пока идёт удержание, по карточке бежит полоска',
+        desc:'Время, которое палец должен пробыть на карточке, чтобы касание засчиталось. Короткие случайные задевания не считаются. Пока идёт удержание, по карточке бежит полоска',
         options:HOLD_OPTIONS.map(([v,l])=>({label:l, active:Number(S.touchHold)===v, action:`setTouch('touchHold',${v})`}))}),
       uiSegment({title:'Игнорировать повтор',
-        desc:'Сколько времени после срабатывания доска не принимает касаний. Защищает фразу от случайного удвоения слова при дрожании рук',
+        desc:'Время после срабатывания, когда доска не принимает касаний. Защищает фразу от случайного удвоения слова при дрожании рук',
         options:REPEAT_OPTIONS.map(([v,l])=>({label:l, active:Number(S.touchRepeat)===v, action:`setTouch('touchRepeat',${v})`}))}),
     ]) : '',
     on ? uiSection('Рамка выделения под пальцем', [
@@ -849,9 +907,8 @@ function renderTouch(){
       uiToggle({id:'toggleVibration', setting:'vibration', title:'Вибрация', on:S.vibration,
                 desc:'Короткий отклик при удержании кнопки очистки'}),
     ]),
-    `<div class="sub-intro">Приспособления действуют на карточки окна. Кнопки столбца, строка фразы и меню остаются обычными кнопками. Одного правильного значения нет: подбирайте вместе со специалистом, начиная с самого мягкого.</div>`,
-  ].join('');
-  renderIcons(el); a11yEnhance(el);
+    `<div class="sub-intro">Приспособления действуют на карточки доски. Кнопки на панели кнопок, строка фразы и меню остаются обычными кнопками. Одного правильного значения нет: подбирайте вместе со специалистом, начиная с самого мягкого.</div>`,
+  ];
 }
 // Рамка выделения под пальцем: цвет, толщина и скругление уходят в CSS-переменные доски
 function applyTouchFrame(){
@@ -881,11 +938,11 @@ const SETTING = {
   // Окно и столбец
   gridSize:   { clean: n=>gridSize(n).n, apply: ()=>{ S.gridPage=0; },
                 render: ()=>{ renderBoard(); renderAccess(); renderActiveProfileBadge(); } },
-  swipePages: { clean: bool, render: ()=>{ renderBoard(); renderAccess(); },
-                toast: on=>on?'Страницы листаются свайпом':'Страницы листаются стрелками' },
-  sideColumn: { clean: oneOf(['left','right'],'right'), render: ()=>{ renderBoard(); renderAccess(); } },
-  sideOn:     { clean: bool, render: renderBoard },
-  favFolder:  { reject: id=>!V[id], render: ()=>{ renderBoard(); renderAccess(); } },
+  paging:     { clean: oneOf(['buttons','swipe','both'],'both'), render: ()=>{ renderBoard(); renderAccess(); },
+                toast: v=>({buttons:'Страницы листаются стрелками', swipe:'Страницы листаются свайпом'})[v]||'Страницы листаются свайпом и стрелками' },
+  sideColumn: { clean: oneOf(['left','right'],'right'), render: ()=>{ renderBoard(); renderSide(); } },
+  sideOn:     { clean: bool, render: ()=>{ renderBoard(); renderPanelSections(); } },
+  favFolder:  { reject: id=>!V[id], render: ()=>{ renderBoard(); renderSide(); } },
   homeFolder: { reject: id=>!V[id], apply: ()=>{ S.folderPath=[{id:S.homeFolder}]; S.gridPage=0; },
                 render: ()=>{ renderBoard(); renderAccess(); },
                 toast: id=>id==='root'?'Дом — весь словарь':'Дом — папка «'+V[id].label+'»' },
@@ -893,13 +950,13 @@ const SETTING = {
   holdToOpenPanel: { clean: bool },
 
   // Касание
-  touchOn:          { clean: bool, render: ()=>{ renderTouch(); renderPanelSections(); } },
-  touchSelect:      { clean: oneOf(['press','release'],'release'), apply: applyTouchFrame, render: renderTouch },
-  touchHold:        { clean: numOneOf(HOLD_OPTIONS.map(o=>o[0]),0), apply: applyTouchFrame, render: renderTouch },
-  touchRepeat:      { clean: numOneOf(REPEAT_OPTIONS.map(o=>o[0]),0), apply: applyTouchFrame, render: renderTouch },
-  touchFrameColor:  { clean: v=>/^#[0-9a-f]{6}$/i.test(v)?v:'#FFD900', apply: applyTouchFrame, render: renderTouch },
-  touchFrameWidth:  { clean: numOneOf(FRAME_WIDTHS,4), apply: applyTouchFrame, render: renderTouch },
-  touchFrameRadius: { clean: numOneOf(FRAME_RADII.map(o=>o[0]),16), apply: applyTouchFrame, render: renderTouch },
+  touchOn:          { clean: bool, render: ()=>{ renderAccess(); renderPanelSections(); } },
+  touchSelect:      { clean: oneOf(['press','release'],'release'), apply: applyTouchFrame, render: renderAccess },
+  touchHold:        { clean: numOneOf(HOLD_OPTIONS.map(o=>o[0]),0), apply: applyTouchFrame, render: renderAccess },
+  touchRepeat:      { clean: numOneOf(REPEAT_OPTIONS.map(o=>o[0]),0), apply: applyTouchFrame, render: renderAccess },
+  touchFrameColor:  { clean: v=>/^#[0-9a-f]{6}$/i.test(v)?v:'#FFD900', apply: applyTouchFrame, render: renderAccess },
+  touchFrameWidth:  { clean: numOneOf(FRAME_WIDTHS,4), apply: applyTouchFrame, render: renderAccess },
+  touchFrameRadius: { clean: numOneOf(FRAME_RADII.map(o=>o[0]),16), apply: applyTouchFrame, render: renderAccess },
   vibration:        { clean: bool },
 
   // Как звучит речь
@@ -912,24 +969,24 @@ const SETTING = {
                 after: on=>{ if(on){ ttsOff=false; ttsWarmVocabulary(); } } },
 
   // Как выглядит доска
-  imageLibrary:    { render: ()=>{ renderLook(); renderWindow(); renderPanelSections(); },
+  imageLibrary:    { render: ()=>{ renderAccess(); renderWindow(); renderPanelSections(); },
                      toast: id=>'Символы: '+((IMAGE_LIBS.find(l=>l.id===id)||{}).label||'') },
-  arasaacColor:    { clean: bool, render: ()=>{ renderLook(); renderWindow(); renderPanelSections(); },
+  arasaacColor:    { clean: bool, render: ()=>{ renderAccess(); renderWindow(); renderPanelSections(); },
                      toast: c=>c?'Цветные символы':'Чёрно-белые символы' },
-  theme:           { clean: oneOf(['light','dark'],'light'), apply: applyTheme, render: renderLook },
-  shareAs:         { clean: oneOf(['image','text'],'image'), render: renderLook },
-  captionPosition: { clean: oneOf(['below','above'],'below'), apply: applyCaption, render: renderLook },
-  captionSize:     { clean: oneOf(['none','small','medium','large','text'],'medium'), apply: applyCaption, render: renderLook },
+  theme:           { clean: oneOf(['light','dark'],'light'), apply: applyTheme, render: renderAccess },
+  shareAs:         { clean: oneOf(['image','text'],'image'), render: renderAccess },
+  captionPosition: { clean: oneOf(['below','above'],'below'), apply: applyCaption, render: renderAccess },
+  captionSize:     { clean: oneOf(['none','small','medium','large','text'],'medium'), apply: applyCaption, render: renderAccess },
   pathBar:         { clean: bool, apply: applyPathBar, render: ()=>{ renderAccess(); renderWindow(); },
                      toast: on=>on?'Путь по папкам показан':'Путь по папкам скрыт' },
   stripPosition:   { clean: oneOf(['top','bottom'],'top'), apply: applyStripPosition,
-                     render: ()=>{ renderLook(); renderWindow(); },
+                     render: ()=>{ renderAccess(); renderWindow(); },
                      toast: p=>p==='bottom'?'Полоска снизу':'Полоска сверху' },
   colorCode:       { clean: oneOf(['off','border','stripe','fill'],'border'), apply: applyColorMode,
-                     render: ()=>{ renderLook(); renderWindow(); renderStrip(); },
+                     render: ()=>{ renderAccess(); renderWindow(); renderStrip(); },
                      toast: m=>({off:'Цвет части речи выключен', border:'Цвет — рамкой', stripe:'Цвет — полоской сверху', fill:'Цвет — фоном'})[m] },
   animations:      { clean: bool },
-  childBuilds:     { clean: bool, render: ()=>{ renderPanelSections(); renderStrip(); renderWindow(); },
+  childBuilds:     { clean: bool, render: ()=>{ renderSpeech(); renderStrip(); renderWindow(); },
                      toast: on=>on?'Говорящий строит форму сам — движок не склоняет':'Движок достраивает грамматику' },
 };
 
@@ -947,7 +1004,7 @@ function setSetting(key, value){
 
 // Имена, на которые ссылается разметка экранов настроек.
 function setGridSize(n){ setSetting('gridSize', n); }
-function setSwipePages(on){ setSetting('swipePages', on); }
+function setPaging(v){ setSetting('paging', v); }
 function setSideColumn(side){ setSetting('sideColumn', side); }
 function setFavFolder(id){ setSetting('favFolder', id); }
 function setHomeFolder(id){ setSetting('homeFolder', id); }
@@ -1012,30 +1069,44 @@ function voiceListHtml(){
   const cur=pickVoice();
   return voices.map(v=>{
     const natural=voiceScore(v)>=6;
+    const remote=v.localService===false;
     const sel=cur && v.voiceURI===cur.voiceURI;
     const uri=(v.voiceURI||'').replace(/'/g,"\\'");
-    return uiRow({title:esc(v.name)+(natural?' <span class="cgi-badge">натуральный</span>':''), titleHtml:true, radio:sel, action:`selectVoiceURI('${uri}')`});
+    return uiRow({title:esc(v.name)+(natural?' <span class="cgi-badge">натуральный</span>':'')+(remote?' <span class="cgi-badge is-neutral">нужен интернет</span>':''), titleHtml:true, radio:sel, action:`selectVoiceURI('${uri}')`});
   }).join('');
 }
-const VOICE_HINT = 'Голос берётся из системы устройства. Как поставить «улучшенный» русский голос, рассказано в поддержке, в частых вопросах.';
 function renderSpeech(){
   const el=document.getElementById('speechContent'); if(!el) return;
   el.innerHTML = [
-    uiSection('Голос', [ voiceListHtml(), `<div class="voice-hint">${VOICE_HINT}</div>` ]),
-    uiSection('Как читает и что проговаривает', [
+    uiSection('Голос', [ voiceListHtml() ]),
+    uiSection('Скорость', [
       uiSegment({title:'Скорость речи', options:[
         {label:'Медленно', active:S.speechRate<0.8,                          action:'setSpeechRate(0.7)'},
         {label:'Обычно',   active:S.speechRate>=0.8 && S.speechRate<1.0,     action:'setSpeechRate(0.9)'},
         {label:'Быстро',   active:S.speechRate>=1.0,                         action:'setSpeechRate(1.1)'}]}),
-      uiSegment({title:'Что проговаривать',
-        desc:'«Всё» — слово при нажатии, название папки при открытии, фраза по кнопке. «Только слова» — слово при нажатии, фраза по кнопке. «Только строку» — говорит только кнопка «Сказать вслух». Кнопка работает при любом выборе',
-        options:[{label:'Всё', active:S.speakMode==='all', action:"setSpeakMode('all')"},
-                 {label:'Только слова', active:S.speakMode!=='all'&&S.speakMode!=='strip', action:"setSpeakMode('words')"},
-                 {label:'Только строку', active:S.speakMode==='strip', action:"setSpeakMode('strip')"}]}),
+    ]),
+    // Три варианта строками, а не кнопками в ряд: у каждого своё описание рядом с
+    // отметкой, вместо одного абзаца над кнопками (решение владельца, 23 сентября 2026 года).
+    uiSection('Озвучивание', [
+      uiRow({title:'Всё', desc:'Слово при нажатии, название папки при открытии, фраза по кнопке',
+             radio:S.speakMode==='all', action:"setSpeakMode('all')"}),
+      uiRow({title:'Только слова', desc:'Слово при нажатии, фраза по кнопке',
+             radio:S.speakMode!=='all'&&S.speakMode!=='strip', action:"setSpeakMode('words')"}),
+      uiRow({title:'Только строку', desc:'Говорит только кнопка «Сказать вслух»',
+             radio:S.speakMode==='strip', action:"setSpeakMode('strip')"}),
+      `<div class="voice-hint">Кнопка «Сказать вслух» работает при любом выборе.</div>`,
+    ]),
+    uiSection('Кнопки и строка фразы', [
       uiToggle({id:'toggleSpeakKeys', setting:'speakKeys', title:'Озвучивать служебные кнопки', on:S.speakKeys,
                 desc:'«Назад», «Домой», «Главные слова», «Поиск» и стрелки страниц называют себя при нажатии'}),
       uiToggle({id:'toggleAutoClear', setting:'autoClear', title:'Очищать после озвучивания', on:S.autoClear,
                 desc:'Убирать фразу из строки, как только она сказана'}),
+    ]),
+    uiSection('Склонение слов', [
+      uiSegment({title:'Склонение слов',
+        desc:'«Говорящий сам» — устройство говорит ровно то, что выложено, без склонения. «Движок» — достраивает падежи и согласование',
+        options:[{label:'Движок достраивает', active:!S.childBuilds, action:'setChildBuilds(false)'},
+                 {label:'Говорящий сам',      active:!!S.childBuilds, action:'setChildBuilds(true)'}]}),
     ]),
     uiSection('Голос из сети', [
       uiToggle({id:'toggleCloudVoice', setting:'cloudVoice', title:'Живой голос', on:S.cloudVoice, descHtml:true,
@@ -1052,58 +1123,12 @@ function renderSpeech(){
 const IMAGE_LIBS = [
   { id:'arasaac', label:'ARASAAC', desc:'Профессиональные символы для общения, около 13 000 штук, есть русские. Загружаются из интернета и сохраняются на устройстве' },
 ];
-function renderLook(){
-  const el=document.getElementById('lookContent'); if(!el) return;
-  const isAra=S.imageLibrary==='arasaac';
-  const libs=IMAGE_LIBS.map(lib=>uiRow({title:lib.label, desc:lib.desc, radio:S.imageLibrary===lib.id, action:`selectImageLibrary('${lib.id}')`}));
-  el.innerHTML = [
-    uiSection('Откуда берутся картинки', libs),
-    uiSection('Как выглядят картинки', [
-      isAra ? uiSegment({title:'Стиль картинок',
-        desc:'Чёрно-белые помогают при перегрузке цветом и при тренировке различения',
-        options:[{label:'Цветные', active:!!S.arasaacColor, action:'setArasaacColor(true)'},
-                 {label:'Чёрно-белые', active:!S.arasaacColor, action:'setArasaacColor(false)'}]}) : '',
-      uiSegment({title:'Цвет части речи',
-        desc:'Прилагательные синие, местоимения и люди жёлтые, существительные оранжевые, глаголы зелёные, места фиолетовые, фразы розовые.. Рамка по умолчанию: она заметна и не мешает разглядеть картинку',
-        options:[{label:'Нет', active:S.colorCode==='off', action:"setColorMode('off')"},
-                 {label:'Рамка', active:S.colorCode==='border', action:"setColorMode('border')"},
-                 {label:'Полоска', active:S.colorCode==='stripe', action:"setColorMode('stripe')"},
-                 {label:'Фон', active:S.colorCode==='fill', action:"setColorMode('fill')"}]}),
-    ]),
-    uiSection('Подпись карточки', [
-      uiSegment({title:'Где стоит подпись',
-        desc:'Под картинкой или над ней. Подпись всегда совпадает с тем, что произносит голос',
-        options:[{label:'Под картинкой', active:S.captionPosition!=='above', action:"setCaptionPosition('below')"},
-                 {label:'Над картинкой', active:S.captionPosition==='above', action:"setCaptionPosition('above')"}]}),
-      uiSegment({title:'Размер подписи',
-        desc:'От «только картинка» до «только текст». Крупная подпись помогает тому, кто уже читает',
-        options:[{label:'Только картинка', active:S.captionSize==='none', action:"setCaptionSize('none')"},
-                 {label:'Маленькая', active:S.captionSize==='small', action:"setCaptionSize('small')"},
-                 {label:'Средняя', active:!['none','small','large','text'].includes(S.captionSize), action:"setCaptionSize('medium')"},
-                 {label:'Крупная', active:S.captionSize==='large', action:"setCaptionSize('large')"},
-                 {label:'Только текст', active:S.captionSize==='text', action:"setCaptionSize('text')"}]}),
-    ]),
-    uiSection('Тема и движение', [
-      uiSegment({title:'Тема',
-        desc:'Тёмная тема снижает яркость экрана: карточки остаются светлыми, всё вокруг темнеет',
-        options:[{label:'Светлая', active:S.theme!=='dark', action:"setTheme('light')"},
-                 {label:'Тёмная',  active:S.theme==='dark',  action:"setTheme('dark')"}]}),
-      uiToggle({id:'toggleAnimations', setting:'animations', title:'Анимации', on:S.animations,
-                desc:'Появление карточек и переходы. Выключены по умолчанию: так спокойнее и предсказуемее'}),
-    ]),
-    uiSection('Строка фразы', [
-      uiSegment({title:'Поделиться сообщением',
-        desc:'Картинкой — строка с карточками и текст фразы под ней. Текстом — только текст фразы',
-        options:[{label:'Картинкой', active:S.shareAs!=='text', action:"setShareAs('image')"},
-                 {label:'Текстом',   active:S.shareAs==='text', action:"setShareAs('text')"}]}),
-      uiSegment({title:'Где стоят строка фразы и «Меню»',
-        desc:'Строка, в которую собираются слова, и кнопка «Меню» в углу столбца. Сверху — как в книге, снизу — ближе к рукам',
-        options:[{label:'Сверху', active:S.stripPosition!=='bottom', action:"setStripPosition('top')"},
-                 {label:'Снизу',  active:S.stripPosition==='bottom', action:"setStripPosition('bottom')"}]}),
-    ]),
-    `<button class="btn-full btn-secondary" onclick="resetSensoryDefaults()">Вернуть спокойные умолчания</button>`,
-  ].join('');
-  renderIcons(el); a11yEnhance(el);
+// Карточка-образец для выбора вида: уменьшенная карточка слова «банан» с нужным
+// оформлением и подписью варианта под ней. Режим цвета задаёт свой класс, а не атрибут
+// на <body>, поэтому все образцы видны разом, в текущем режиме или нет.
+function sampleCardOpt(label, cls, active, action){
+  const html=`<div class="sample-card cat-noun ${cls}"><img src="pictos/банан.png" alt=""><span class="sample-label">банан</span></div><small>${esc(label)}</small>`;
+  return {label, html, active, action};
 }
 function applyColorMode(){ document.body.dataset.colorMode = S.colorCode; }
 function applyTheme(){ document.body.dataset.theme = S.theme==='dark' ? 'dark' : 'light'; }
@@ -1128,7 +1153,7 @@ function resetSensoryDefaults(){
     S.speechRate=0.9;
     S.speakMode='words'; S.speakKeys=false; S.autoClear=false; S.vibration=true;
     applyColorMode(); applyCaption();
-    renderLook(); renderWindow(); renderPanelSections(); persist();
+    renderAccess(); renderWindow(); renderPanelSections(); persist();
     showToast('Спокойные настройки восстановлены');
   }, {title:'Сброс настроек', okLabel:'Сбросить', danger:false});
 }

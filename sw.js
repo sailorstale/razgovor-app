@@ -1,6 +1,6 @@
 // Service worker «Разговора» — офлайн-работа (оболочка + пиктограммы ARASAAC).
 // Версию поднимать при изменении оболочки, чтобы кэш обновился.
-const VERSION = 'v83';
+const VERSION = 'v98';
 const SHELL_CACHE = 'razgovor-shell-' + VERSION;
 const RUNTIME_CACHE = 'razgovor-runtime-' + VERSION;
 
@@ -18,6 +18,8 @@ const SHELL = [
   './review.js',
   './review.css',
   './manifest.webmanifest',
+  './fonts/InterDisplay-Regular.woff2',
+  './fonts/InterDisplay-SemiBold.woff2',
   './icons/icon-64.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -122,7 +124,6 @@ self.addEventListener('activate', e => {
 });
 
 const isArasaac = url => url.hostname.endsWith('arasaac.org');
-const isFont = url => url.hostname.includes('fonts.googleapis.com') || url.hostname.includes('fonts.gstatic.com');
 
 self.addEventListener('fetch', e => {
   const req = e.request;
@@ -158,8 +159,9 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Пиктограммы ARASAAC и шрифты — stale-while-revalidate (работают офлайн после первой загрузки)
-  if (isArasaac(url) || isFont(url)) {
+  // Пиктограммы ARASAAC — stale-while-revalidate (работают офлайн после первой загрузки).
+  // Шрифт лежит в своей оболочке (fonts/) и попадает в ветку выше.
+  if (isArasaac(url)) {
     e.respondWith(
       caches.open(RUNTIME_CACHE).then(cache =>
         cache.match(req).then(cached => {

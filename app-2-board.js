@@ -50,7 +50,7 @@ function showScreen(id, anim) {
   S.screen=id;
   if(id==='aac-main') renderBoard();
   // Возврат в корень панели без следа: дальше «‹» ведёт из корня на доску.
-  if(id==='caregiver-panel') renderPanel();   // след возврата обнуляют только openMenu и closeCaregiverPanel: корень панели теперь меню
+  if(id==='menu-screen') renderPanel();   // строки меню показывают текущие значения; след возврата обнуляют только openMenu и closeCaregiverPanel
   a11yEnhance(sc);
 }
 
@@ -152,17 +152,11 @@ function renderWindow(){
   const f=currentFolder();
   const g=gridSize(S.gridSize);
   const anim=motionOn();
-  // Клетки всегда 4 × 3, как карточки Avaz: считаем размер клетки так, чтобы окно
-  // целиком поместилось в область и по ширине, и по высоте, и центрируем сетку.
-  const area=grid.parentElement;
-  const cs=getComputedStyle(grid);
-  const gapPx=parseFloat(cs.columnGap)||8, padX=(parseFloat(cs.paddingLeft)||0)+(parseFloat(cs.paddingRight)||0), padY=(parseFloat(cs.paddingTop)||0)+(parseFloat(cs.paddingBottom)||0);
-  const availW=Math.max(0,(area?area.clientWidth:grid.clientWidth)-padX-gapPx*(g.cols-1));
-  const availH=Math.max(0,(area?area.clientHeight:grid.clientHeight)-padY-gapPx*(g.rows-1));
-  const cellW=Math.max(24, Math.floor(Math.min(availW/g.cols, (availH/g.rows)*4/3)));
-  const cellH=Math.floor(cellW*3/4);
-  grid.style.gridTemplateColumns=`repeat(${g.cols},${cellW}px)`;
-  grid.style.gridTemplateRows=`repeat(${g.rows},${cellH}px)`;
+  // Клетки растягиваются на всю доску: сетка делит её поровну на ряды и столбцы
+  // окна. Форма клетки зависит от формы окна, набор окон подобран так, чтобы на
+  // поперечном планшете клетка была около 4 × 3 (см. GRID_SIZES в core.js).
+  grid.style.gridTemplateColumns=`repeat(${g.cols},minmax(0,1fr))`;
+  grid.style.gridTemplateRows=`repeat(${g.rows},minmax(0,1fr))`;
   grid.dataset.density = windowDensity(S.gridSize);   // решение «что такое крупно» живёт в ядре
   if(!f){
     grid.innerHTML='<div class="board-empty">Папки нет.<br>Нажмите «Домой».</div>';
@@ -174,7 +168,7 @@ function renderWindow(){
   // Пустая папка не даёт белого экрана: объясняем текстом, что карточек нет и где их добавить.
   // В режиме правки пустые клетки нажимаются, поэтому там рисуем саму сетку.
   if(!anyVisible && !editing){
-    grid.innerHTML='<div class="board-empty">В этой папке пока нет карточек.<br>Меню → «Правка словаря», нажмите пустую клетку.</div>';
+    grid.innerHTML='<div class="board-empty">В этой папке пока нет карточек.<br>Меню → «Правка доски», нажмите пустую клетку.</div>';
     return;
   }
   // Пустая клетка: в общении — мёртвая зона, в режиме правки — место для нового слова или папки.
@@ -225,6 +219,12 @@ const SIDE_BUTTON_DEFS = {
   alarm:   {icon:'alarm',   label:'Сигнал тревоги'},
   mistake: {icon:'mistake', label:'Я допустил ошибку'},
 };
+// Стрелки «Предыдущее» и «Следующее» лежат одна под другой в общем белом контейнере,
+// как кнопки в строке фразы: сами стрелки чуть меньше и серые.
+function pagerHtml(prevOff, nextOff){
+  const one=(key,action,off)=>{ const d=SIDE_BUTTON_DEFS[key]; return `<button class="pager-btn${off?' is-off':''}" data-act="${d.icon}" onclick="sayKey('${d.label}');${action}" aria-label="${esc(d.label)}"${off?' aria-disabled="true"':''}>${mi(d.icon)}</button>`; };
+  return `<div class="side-pager" role="group" aria-label="Страницы">${one('prev','prevPage()',prevOff)}${one('next','nextPage()',nextOff)}</div>`;
+}
 function renderSideColumn(){
   const el=document.getElementById('sideButtons'); if(!el) return;
   const main=document.getElementById('aac-main');
@@ -244,8 +244,15 @@ function renderSideColumn(){
     else if(key==='fav') items.push(btn('fav','goFav()',{active:currentEntry().id===S.favFolder}));
     else if(key==='key') items.push(btn('key','goCore()',{active:currentEntry().id==='core'}));
     else if(key==='search') items.push(btn('search','openSearch()'));
-    else if(key==='prev' && !S.swipePages) items.push(btn('prev','prevPage()',{off:page<=0}));
-    else if(key==='next' && !S.swipePages) items.push(btn('next','nextPage()',{off:page>=total-1}));
+    // Стрелки страниц стоят вместе в одном контейнере, одна под другой (решение владельца,
+    // 24 сентября 2026 года). Одна стрелка без второй — обычная кнопка.
+    else if((key==='prev' || key==='next') && S.paging!=='swipe'){
+      const both=list.includes('prev') && list.includes('next');
+      if(!both){ items.push(key==='prev' ? btn('prev','prevPage()',{off:page<=0}) : btn('next','nextPage()',{off:page>=total-1})); }
+      else if(key===(list.indexOf('prev')<list.indexOf('next')?'prev':'next')){   // рисуем один раз, на месте первой из двух
+        items.push(pagerHtml(page<=0, page>=total-1));
+      }
+    }
     else if(key==='alarm') items.push(btn('alarm','soundAlarm()'));
     else if(key==='mistake') items.push(btn('mistake','sayMistake()'));
   });
@@ -259,7 +266,8 @@ function renderSideColumn(){
 // что даёт высота: все кнопки, включая угловые, должны поместиться без прокрутки.
 function fitSideButtons(){
   const col=document.querySelector('.side-column'); const el=document.getElementById('sideButtons'); if(!col||!el) return;
-  const n=el.querySelectorAll('.side-btn').length + [...col.querySelectorAll('.side-settings')].filter(x=>x.offsetParent!==null).length;
+  // Контейнер со стрелками по высоте равен двум кнопкам с промежутком, поэтому считается за две.
+  const n=el.querySelectorAll('.side-btn').length + 2*el.querySelectorAll('.side-pager').length + [...col.querySelectorAll('.side-settings')].filter(x=>x.offsetParent!==null).length;
   const cs=getComputedStyle(col), gap=parseFloat(cs.gap)||8;
   const h=col.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
   const maxW=Math.min(112, Math.max(56, Math.round(col.parentElement.clientWidth*0.09)));
@@ -292,12 +300,12 @@ function soundAlarm(){
 // «Я допустил ошибку» — говорит фразу из настройки «говорить как»
 function sayMistake(){ speakWord(S.mistakePhrase||'Я допустил ошибку'); }
 
-// Листание свайпом (когда включено): горизонтальный жест по окну переворачивает
-// страницу. Карточка срабатывает на отпускании, поэтому после свайпа нажатие гасим.
+// Листание свайпом (когда листание не «только стрелками»): горизонтальный жест по доске
+// переворачивает страницу. Карточка срабатывает на отпускании, поэтому после свайпа нажатие гасим.
 let swipeJustHappened=false, boardSwipe=null;
 (function(){
   const area=document.querySelector('#aac-main .grid-area'); if(!area) return;
-  area.addEventListener('pointerdown',e=>{ if(!S.swipePages) return; boardSwipe={x:e.clientX,y:e.clientY}; });
+  area.addEventListener('pointerdown',e=>{ if(S.paging==='buttons') return; boardSwipe={x:e.clientX,y:e.clientY}; });
   area.addEventListener('pointerup',e=>{
     if(!boardSwipe) return;
     const dx=e.clientX-boardSwipe.x, dy=e.clientY-boardSwipe.y; boardSwipe=null;
@@ -411,7 +419,7 @@ function pathShowStep(){
 function applyPathGlow(){
   document.querySelectorAll('.path-glow').forEach(x=>x.classList.remove('path-glow'));
   const ex=pathExpected(); if(!ex) return;
-  const el = ex.kind==='cell' ? document.querySelector(`#pictoGrid [data-key="${ex.key}"]`) : document.querySelector(`#sideButtons .side-btn[data-act="${ex.act}"]`);
+  const el = ex.kind==='cell' ? document.querySelector(`#pictoGrid [data-key="${ex.key}"]`) : document.querySelector(`#sideButtons [data-act="${ex.act}"]`);
   if(el) el.classList.add('path-glow');
 }
 // Шаг вперёд: по нажатию говорящего (auto=false) или по таймеру (auto=true)
@@ -512,7 +520,7 @@ function touchCfg(){ return { select: S.touchSelect==='press'?'press':'release',
   grid.addEventListener('click',e=>{ if(touchActive() && e.target.closest('.picto-card[data-key]')){ e.stopPropagation(); e.preventDefault(); } }, true);
 })();
 
-// ===== РЕЖИМ ПРАВКИ (спецификация, раздел 8, «Правка словаря на доске») =====
+// ===== РЕЖИМ ПРАВКИ (спецификация, раздел 8, «Правка доски») =====
 // Устроен как режим «Редактировать» Avaz. Строку фразы сменяет полоса правки:
 // «Готово», «Отменить», «Добавить новое», «Выбрать все» (слова наши: «Готово» и «Правка» вместо «Сделано» и «Редактировать» Avaz, решение владельца от 23 сентября 2026 года); в углу столбца вместо
 // «Меню» стоит «Опции папки». У карточек кружок выбора, пустые клетки с плюсом.
@@ -685,7 +693,7 @@ function addToFolder(){ const f=currentEntry(); openAddNewSheet(f.id, firstFreeC
 function openAddNewSheet(folderId, key){
   const items=[];
   if(editClipboard.length) items.push({label:`Вставить сюда (${editClipboard.length})`, fn:()=>pasteClipboard(key)});
-  openActionMenu('Что вы хотите добавить?', [...items,
+  openActionMenu('Добавить', [...items,
     // Снимок для «Отменить» берёт само сохранение (editVocab), а не открытие окна:
     // закрытое без сохранения окно шага в стеке больше не оставляет.
     {label:'Слово', fn:()=>openAddCardInCell(folderId, key)},
@@ -725,7 +733,7 @@ function linkFolderInto(folderId, key, targetId){
 function openLinkFolderPicker(folderId, key){
   const ids=Object.keys(V).filter(id=>id!=='root' && id!==folderId);
   if(!ids.length){ showToast('Связать пока нечего'); return; }
-  openActionMenu('Какую папку связать?', ids.map(id=>({label:V[id].label, fn:()=>linkFolderInto(folderId, key, id)})));
+  openActionMenu('Связать папку', ids.map(id=>({label:V[id].label, fn:()=>linkFolderInto(folderId, key, id)})));
 }
 
 // ---- Опции папки ----

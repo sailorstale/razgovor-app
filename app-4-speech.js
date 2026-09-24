@@ -22,7 +22,10 @@ function voiceScore(v){
   if(/premium|enhanced|neural|natural|улучшен/.test(n)) s+=10;
   if(/siri/.test(n))                                   s+=6;
   if(/google|microsoft/.test(n))                       s+=3;
-  if(v.localService===false)                           s+=2;   // онлайн-голоса обычно нейросетевые
+  // Сетевые голоса (в Chrome это «Google …») работают только с интернетом, а в Chrome
+  // с версии 130 ещё и ломаются: браузер молча читает текст голосом по умолчанию,
+  // то есть английским. Поэтому по умолчанию берём голос, установленный на устройстве.
+  if(v.localService===false)                           s-=6;
   if(/compact|eloquence|espeak/.test(n))               s-=10;  // заведомо роботизированные
   return s;
 }
@@ -196,7 +199,23 @@ function speakSystemNow(t, rate, opts){
   u.lang='ru-RU'; u.rate=rate||S.speechRate||.9; applyVoice(u);
   if(opts.onstart) u.onstart=opts.onstart;
   if(opts.onend)   u.onend=opts.onend;
-  if(opts.onerror) u.onerror=opts.onerror;
+  // Сетевой голос не ответил — повторяем локальным, чтобы фраза не пропала
+  // и не прозвучала английским голосом по умолчанию.
+  u.onerror=ev=>{
+    const err=ev&&ev.error;
+    if(u.voice && u.voice.localService===false && err!=='interrupted' && err!=='canceled'){
+      const local=bestRuVoices().find(v=>v.localService!==false);
+      if(local){
+        const u2=new SpeechSynthesisUtterance(t);
+        u2.lang='ru-RU'; u2.rate=u.rate; u2.pitch=1; u2.voice=local;
+        if(opts.onstart) u2.onstart=opts.onstart;
+        if(opts.onend)   u2.onend=opts.onend;
+        if(opts.onerror) u2.onerror=opts.onerror;
+        speechSynthesis.speak(u2); return;
+      }
+    }
+    if(opts.onerror) opts.onerror(ev);
+  };
   speechSynthesis.speak(u);
   return u;
 }
