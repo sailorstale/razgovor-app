@@ -1,0 +1,248 @@
+/* ===== РЕЖИМ РЕВЬЮ: рамка устройства + комментарии-пины =====
+   Слой поверх прототипа: не трогает styles.css и app.js.
+   Выключен (body без data-review="on") — всё как раньше: экран на весь браузер. */
+
+:root {
+  --rv-bar: 52px;
+  --rv-panel: 340px;
+  --rv-accent: #4C6FFF;
+  --rv-ok: #2FAE5F;
+  --rv-ink: #1B1D21;
+  --rv-muted: #6E7278;
+  --rv-line: #E3E5E9;
+}
+
+/* --- Каркас (по умолчанию прозрачный: прототип занимает весь экран) --- */
+#reviewStage { position:fixed; inset:0; }
+#reviewViewport { position:absolute; inset:0; }
+#deviceFrame { position:relative; width:100%; height:100%; }
+#reviewToolbar, #reviewPanel, #reviewPins, #reviewHint { display:none; }
+
+/* --- Режим ревью включён --- */
+body[data-review="on"] { background:#EDEEF1; }
+body[data-review="on"] #reviewStage { display:flex; flex-direction:column; background:#EDEEF1; }
+body[data-review="on"] #reviewViewport {
+  position:relative; inset:auto; flex:1; min-height:0;
+  display:flex; align-items:center; justify-content:center;
+  padding:20px; padding-right:calc(20px + var(--rv-panel-w, 0px));
+  overflow:hidden; transition:padding-right .18s ease;
+}
+body[data-review="on"] #deviceFrame {
+  flex:none;
+  width:var(--rv-w, 390px); height:var(--rv-h, 844px);
+  transform:scale(var(--rv-scale, 1)); transform-origin:center center;
+  border-radius:26px; background:#fff;
+  box-shadow:0 24px 70px rgba(16,20,30,.22);   /* обводки в 1px нет: владелец убрал её 23 сентября 2026 года */
+}
+body[data-review="on"] #deviceFrame > .phone-screen { border-radius:inherit; overflow:hidden; }
+body[data-review="on"] #reviewToolbar { display:flex; }
+body[data-review="on"] #reviewPins { display:block; }
+body[data-review="on"].rv-panel-open #reviewPanel { display:flex; }
+
+/* прицел режима «поставить комментарий» */
+body.rv-adding #deviceFrame, body.rv-adding #deviceFrame * { cursor:crosshair !important; }
+body[data-review="on"] #reviewHint { display:none; }
+body.rv-adding #reviewHint { display:block; }
+
+/* --- Верхняя панель --- */
+#reviewToolbar {
+  flex:none; height:var(--rv-bar); align-items:center; gap:10px;
+  padding:0 14px; background:#fff; border-bottom:1px solid var(--rv-line);
+  font-family:'Inter',-apple-system,sans-serif; color:var(--rv-ink);
+  user-select:none; z-index:120;
+  /* В узком окне панель не ломается, а прокручивается вбок. */
+  overflow-x:auto; overflow-y:hidden; scrollbar-width:none;
+}
+#reviewToolbar::-webkit-scrollbar { display:none; }
+#reviewToolbar > * { flex:none; }
+#reviewToolbar .rv-spacer { flex:1 1 auto; min-width:8px; }
+.rv-brand { font-size:13px; font-weight:700; letter-spacing:.2px; white-space:nowrap; }
+.rv-brand span { color:var(--rv-muted); font-weight:500; margin-left:6px; }
+.rv-spacer { flex:1; }
+
+.rv-seg { display:flex; background:#F1F2F5; border-radius:10px; padding:3px; gap:2px; }
+.rv-seg button {
+  border:none; background:none; cursor:pointer; font:inherit; font-size:13px; font-weight:600;
+  color:var(--rv-muted); padding:6px 12px; border-radius:8px; display:flex; align-items:center; gap:6px;
+}
+.rv-seg button[aria-pressed="true"] { background:#fff; color:var(--rv-ink); box-shadow:0 1px 3px rgba(16,20,30,.14); }
+
+.rv-btn {
+  border:1px solid var(--rv-line); background:#fff; cursor:pointer; font:inherit; font-size:13px; font-weight:600;
+  color:var(--rv-ink); padding:7px 12px; border-radius:9px; display:flex; align-items:center; gap:7px; white-space:nowrap;
+}
+.rv-btn:hover { background:#F7F8FA; }
+.rv-btn.primary { background:var(--rv-accent); border-color:var(--rv-accent); color:#fff; }
+.rv-btn.primary:hover { background:#3E5EE8; }
+.rv-btn.ghost { border-color:transparent; color:var(--rv-muted); }
+.rv-btn.ghost:hover { background:#F1F2F5; }
+/* Пины спрятаны — состояние должно читаться с одного взгляда, иначе человек
+   решит, что комментарии пропали, и начнёт дублировать уже написанное. */
+.rv-btn.off { background:#F1F2F5; color:var(--rv-muted); border-color:transparent; }
+.rv-btn.off:hover { background:#E8EAEF; }
+.rv-badge {
+  min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:var(--rv-accent); color:#fff;
+  font-size:11px; font-weight:700; display:inline-flex; align-items:center; justify-content:center;
+}
+.rv-btn.primary .rv-badge { background:rgba(255,255,255,.28); }
+.rv-scale-label { font-size:12px; color:var(--rv-muted); font-variant-numeric:tabular-nums; }
+
+
+/* --- Подсказка режима добавления --- */
+#reviewHint {
+  position:fixed; left:50%; top:calc(var(--rv-bar) + 14px); transform:translateX(-50%); z-index:150;
+  background:var(--rv-accent); color:#fff; font:600 12px/1.4 'Inter',sans-serif;
+  padding:8px 14px; border-radius:999px; box-shadow:0 8px 22px rgba(76,111,255,.35); pointer-events:none;
+}
+
+/* --- Слой пинов (внутри масштабируемой рамки) --- */
+#reviewPins { position:absolute; inset:0; z-index:60; pointer-events:none; overflow:visible; }
+.rv-pin { position:absolute; transform:scale(var(--rv-inv, 1)); transform-origin:top left; }
+.rv-dot {
+  pointer-events:auto; width:28px; height:28px; margin:-14px 0 0 -14px;
+  border-radius:50% 50% 50% 4px; border:2px solid #fff; background:var(--rv-accent); color:#fff;
+  font:700 12px/1 'Inter',sans-serif; display:flex; align-items:center; justify-content:center;
+  cursor:pointer; box-shadow:0 3px 10px rgba(16,20,30,.28); transition:transform .12s;
+}
+.rv-dot:hover { transform:scale(1.12); }
+.rv-pin.resolved .rv-dot { background:var(--rv-ok); }
+.rv-pin.focus .rv-dot { box-shadow:0 0 0 4px rgba(76,111,255,.3), 0 3px 10px rgba(16,20,30,.28); }
+.rv-pin.other-mode .rv-dot { opacity:.35; }
+
+/* --- Попап пина --- */
+.rv-pop {
+  pointer-events:auto; position:absolute; top:-14px; left:22px; width:268px;
+  background:#fff; border:1px solid var(--rv-line); border-radius:12px; padding:12px;
+  box-shadow:0 18px 44px rgba(16,20,30,.24); font-family:'Inter',sans-serif; color:var(--rv-ink);
+  user-select:text; z-index:5;
+}
+.rv-pin.flip .rv-pop { left:auto; right:22px; }
+/* Пин у нижнего края окна — окошко раскрывается вверх, иначе его обрежет. */
+.rv-pin.up .rv-pop { top:auto; bottom:-14px; }
+.rv-pop-head { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--rv-muted); margin-bottom:8px; }
+.rv-pop-head .rv-spacer { flex:1; }
+.rv-icon-btn {
+  border:none; background:none; cursor:pointer; font-size:13px; color:var(--rv-muted);
+  padding:3px 6px; border-radius:6px; line-height:1;
+}
+.rv-icon-btn:hover { background:#F1F2F5; color:var(--rv-ink); }
+.rv-icon-btn.danger:hover { background:#FFF0F0; color:#D33; }
+.rv-anchor {
+  font-size:11px; color:var(--rv-muted); margin-bottom:8px; line-height:1.35;
+  overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+}
+/* Ветка обсуждения внутри пина: первое сообщение + ответы */
+.rv-thread { max-height:230px; overflow-y:auto; margin-bottom:9px; }
+.rv-msg { padding:8px 0; border-top:1px solid var(--rv-line); }
+.rv-msg:first-child { border-top:none; padding-top:0; }
+.rv-msg-meta { display:flex; align-items:center; gap:7px; font-size:11px; color:var(--rv-muted); margin-bottom:4px; }
+.rv-msg-meta .rv-icon-btn { opacity:0; transition:opacity .12s; }
+.rv-msg:hover .rv-msg-meta .rv-icon-btn { opacity:1; }
+.rv-msg-text { font-size:13px; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
+.rv-msg.root .rv-msg-text { font-weight:500; }
+.rv-pin.resolved .rv-msg-text { color:var(--rv-muted); }
+.rv-msg-edit { min-height:110px !important; }
+.rv-thread .rv-pop-actions { margin-top:7px; }
+
+/* Метка «сколько сообщений в ветке» на самом пине */
+.rv-dot.threaded::after {
+  content:attr(data-count);
+  position:absolute; top:-7px; right:-9px;
+  min-width:15px; height:15px; padding:0 3px; border-radius:8px;
+  background:var(--rv-ink); color:#fff; border:2px solid #fff;
+  font:700 9px/11px 'Inter',sans-serif; display:flex; align-items:center; justify-content:center;
+}
+.rv-dot { position:relative; }
+
+.rv-card-thread { margin-top:6px; font-size:11px; line-height:1.4; color:var(--rv-muted); }
+.rv-card-more { font-weight:700; color:var(--rv-accent); }
+
+.rv-pop textarea {
+  /* Втрое выше прежнего (было 70px): длинный комментарий видно целиком. */
+  width:100%; min-height:210px; resize:vertical; border:1px solid var(--rv-line); border-radius:9px;
+  padding:8px 10px; font:400 13px/1.5 'Inter',sans-serif; color:var(--rv-ink); background:#fff;
+  user-select:text; outline:none;
+}
+.rv-pop textarea:focus { border-color:var(--rv-accent); box-shadow:0 0 0 3px rgba(76,111,255,.15); }
+/* Поле ответа скромнее первого сообщения — иначе окошко не влезает в экран
+   (тянется мышью за уголок, если ответ длинный). */
+.rv-reply-input { min-height:110px !important; }
+.rv-pop-actions { display:flex; gap:8px; margin-top:9px; }
+.rv-pop-actions .rv-btn { flex:1; justify-content:center; padding:8px 10px; }
+.rv-text { font-size:13px; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
+.rv-pin.resolved .rv-text { color:var(--rv-muted); }
+
+/* --- Правая панель --- */
+#reviewPanel {
+  position:fixed; top:var(--rv-bar); right:0; bottom:0; width:var(--rv-panel); z-index:130;
+  flex-direction:column; background:#fff; border-left:1px solid var(--rv-line);
+  font-family:'Inter',sans-serif; color:var(--rv-ink); box-shadow:-12px 0 32px rgba(16,20,30,.07);
+}
+.rv-panel-head { display:flex; align-items:center; gap:8px; padding:14px 14px 10px; }
+.rv-panel-head h2 { font-size:14px; font-weight:700; }
+/* строка состояния: где живут комментарии и всё ли доехало на сервер */
+.rv-status {
+  display:flex; align-items:flex-start; gap:7px; margin:0 14px 10px;
+  padding:7px 9px; border-radius:9px; font-size:11px; line-height:1.4;
+  background:#F4F6F8; color:var(--rv-muted); border:1px solid var(--rv-line);
+}
+.rv-status .rv-dotmark { flex:none; width:7px; height:7px; margin-top:4px; border-radius:50%; background:currentColor; }
+.rv-status.ok { background:#F1FAF3; border-color:#CFEBD8; color:#2A7B48; }
+.rv-status.warn { background:#FFF6E8; border-color:#F2DFBB; color:#8A5A10; }
+.rv-status.local { background:#F4F6F8; }
+.rv-retry {
+  flex:none; border:1px solid currentColor; background:none; color:inherit; cursor:pointer;
+  font:600 11px/1 'Inter',sans-serif; padding:4px 7px; border-radius:6px; margin-left:auto;
+}
+.rv-who { font-weight:600; color:var(--rv-ink); }
+
+.rv-author { display:flex; align-items:center; gap:8px; padding:9px 12px 0; font-size:11px; color:var(--rv-muted); }
+.rv-author label { flex:none; }
+.rv-author input {
+  flex:1; min-width:0; border:1px solid var(--rv-line); border-radius:8px; padding:6px 8px;
+  font:400 12px/1.2 'Inter',sans-serif; color:var(--rv-ink); background:#fff; outline:none; user-select:text;
+}
+.rv-author input:focus { border-color:var(--rv-accent); box-shadow:0 0 0 3px rgba(76,111,255,.14); }
+
+.rv-filters { display:flex; gap:6px; padding:0 14px 12px; border-bottom:1px solid var(--rv-line); }
+.rv-filters button {
+  border:1px solid var(--rv-line); background:#fff; cursor:pointer; font:600 12px/1 'Inter',sans-serif;
+  color:var(--rv-muted); padding:6px 10px; border-radius:8px;
+}
+.rv-filters button[aria-pressed="true"] { background:var(--rv-ink); border-color:var(--rv-ink); color:#fff; }
+.rv-list { flex:1; overflow-y:auto; padding:12px 12px 24px; }
+.rv-empty { text-align:center; color:var(--rv-muted); font-size:13px; line-height:1.5; padding:28px 14px; }
+.rv-group { margin-bottom:16px; }
+.rv-group h3 {
+  font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px;
+  color:var(--rv-muted); margin:0 2px 7px; display:flex; align-items:baseline; gap:6px;
+}
+.rv-group h3 .rv-here { font-weight:500; text-transform:none; letter-spacing:0; }
+.rv-card {
+  position:relative; border:1px solid var(--rv-line); border-radius:11px; padding:10px 11px; margin-bottom:8px;
+  background:#fff; cursor:pointer; transition:border-color .12s, background .12s;
+}
+.rv-card:hover { border-color:#BFC8FF; background:#FBFCFF; }
+.rv-card.resolved { opacity:.62; }
+.rv-card.focus { border-color:var(--rv-accent); box-shadow:0 0 0 3px rgba(76,111,255,.14); }
+.rv-card-meta { display:flex; align-items:center; gap:7px; font-size:11px; color:var(--rv-muted); margin-bottom:5px; }
+.rv-chip { border:1px solid var(--rv-line); border-radius:6px; padding:1px 6px; font-size:10px; font-weight:600; }
+.rv-card-text { font-size:13px; line-height:1.45; word-break:break-word;
+  overflow:hidden; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; }
+.rv-card-anchor { margin-top:6px; font-size:11px; color:var(--rv-muted);
+  overflow:hidden; display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; }
+.rv-card-actions { position:absolute; right:7px; top:7px; display:flex; gap:2px; opacity:0; transition:opacity .12s; }
+.rv-card:hover .rv-card-actions, .rv-card.resolved .rv-card-actions { opacity:1; }
+.rv-panel-foot { border-top:1px solid var(--rv-line); padding:10px 12px; display:flex; gap:8px; }
+.rv-panel-foot .rv-btn { flex:1; justify-content:center; font-size:12px; padding:7px 8px; }
+
+/* Узкий экран: панель поверх (не сжимает рамку) */
+@media (max-width: 720px) {
+  #reviewPanel { width:min(340px, 100vw); }
+  body[data-review="on"] #reviewViewport { padding-right:20px; }
+  .rv-brand { display:none; }
+}
+
+/* «Начать сначала»: второе нажатие подтверждает, поэтому в этот момент кнопка
+   становится заметной. Первое нажатие ничего не стирает. */
+.rv-btn.armed { background: #FFF0F0; border-color: #F3C9C9; color: #C62828; font-weight: 700; }

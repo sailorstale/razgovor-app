@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Разговор">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#ffffff">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-64.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-180.png">
+<title>Разговор — AAC</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="review.css">
+</head>
+<body>
+<!-- Обвязка режима ревью: рамка устройства (телефон/планшет) + слой комментариев.
+     Пока режим выключен, обёртки прозрачны — прототип занимает весь экран, как раньше. -->
+<div id="reviewStage">
+<div id="reviewToolbar"></div>
+<div id="reviewViewport">
+<div id="deviceFrame">
+<div class="phone-screen" id="phoneScreen">
+
+  <!-- ДОСКА. Четыре зоны: строка фразы, окно на матрицу папки с путём над ним,
+       боковой столбец служебных кнопок, кнопка настроек в углу столбца.
+       Полос ключевых слов и групп нет: группы стали папками в окне, ключевые
+       слова — папкой за кнопкой столбца (спецификация, раздел 4). -->
+  <div class="screen" id="aac-main" data-side="right">
+    <!-- Доска — две колонки во всю высоту: слева строка фразы, путь и окно, справа
+         боковой столбец, где «Меню» стоит первым, вровень со строкой фразы. -->
+    <div class="board-body">
+      <div class="board-main">
+        <!-- СТРОКА ФРАЗЫ, как строка сообщения Avaz: одно белое поле, слова картинкой и
+             подписью; пока пусто, кнопок нет, с первым словом справа появляются четыре
+             кнопки. Нажатие по самому полю произносит фразу (спецификация, раздел 4). -->
+        <div class="message-strip" id="messageStrip">
+          <div class="strip-box" id="stripBox" onclick="speakMessage()" role="button" aria-label="Сказать фразу вслух">
+            <div class="strip-pictograms" id="stripPictograms"></div>
+            <div class="strip-actions" id="stripActions">
+              <button class="strip-btn" id="btnSpeak" onclick="event.stopPropagation();speakMessage()" aria-label="Сказать" title="Сказать"><span class="mi-slot" data-mi="volume"></span></button>
+              <button class="strip-btn" onclick="event.stopPropagation();removeLast()" aria-label="Удалить последнее слово" title="Удалить"><span class="mi-slot" data-mi="autoclear"></span></button>
+              <button class="strip-btn" onclick="event.stopPropagation();clearStrip()" aria-label="Очистить фразу" title="Очистить"><span class="mi-slot" data-mi="close"></span></button>
+              <button class="strip-btn" onclick="event.stopPropagation();shareMessage()" aria-label="Поделиться фразой" title="Поделиться"><span class="mi-slot" data-mi="share"></span></button>
+            </div>
+          </div>
+        </div>
+        <!-- ПОЛОСА ПРАВКИ. Видна только в режиме правки и сменяет строку фразы; содержимое
+             рисует renderEditBar (спецификация, раздел 8, «Правка словаря на доске»). -->
+        <div class="edit-bar" id="editBar"></div>
+        <nav class="board-path" id="boardPath" aria-label="Путь по папкам"></nav>
+        <div class="grid-area">
+          <div class="pictogram-grid" id="pictoGrid"></div>
+        </div>
+      </div>
+      <aside class="side-column" aria-label="Служебные кнопки">
+        <!-- Кнопка меню стоит первой и статично: на неё навешено удержание (bindHold),
+             а динамическая часть столбца ниже перерисовывается. Открывается нажатием или
+             удержанием 2,5 с — по настройке «Открывать удержанием». -->
+        <button id="iconPanel" class="side-btn side-settings" title="Меню" aria-label="Меню"><span class="mi-slot" data-mi="menu"></span><span class="side-label">Меню</span></button>
+        <!-- В режиме правки на месте «Меню» стоит «Опции папки», как у Avaz -->
+        <button id="folderOptionsBtn" class="side-btn side-settings side-folder-options" onclick="openFolderOptions()" title="Опции папки" aria-label="Опции папки"><span class="mi-slot" data-mi="folderopts"></span><span class="side-label">Опции папки</span></button>
+        <div class="side-buttons" id="sideButtons"></div>
+        <input type="file" id="folderFile" accept="application/json,.json" style="display:none" onchange="importFolder(this)">
+      </aside>
+    </div>
+    <div class="toast" id="toastLocal"></div>
+  </div>
+
+  <!-- PARTNER VIEW — крупный показ сообщения взрослому + памятка -->
+
+  <!-- МЕНЮ — пять пунктов, как у Avaz без «Инструментов» (спецификация, раздел 6) -->
+  <!-- Меню — экран панели, как настройки. Заголовка нет по решению владельца, в шапке только «✕». -->
+  <div class="screen" id="menu-screen">
+    <div class="panel-header"><h2></h2><button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button></div>
+    <div class="panel-body">
+      <div class="cg-section">
+        <div class="cg-item" onclick="menuGo('settings')"><div class="cgi-icon" data-mi="settings"></div><div class="cgi-text"><div class="cgi-title">Настройки</div></div><span class="cgi-arrow" data-mi="chevr"></span></div>
+        <div class="cg-item" onclick="menuGo('edit')"><div class="cgi-icon" data-mi="groups"></div><div class="cgi-text"><div class="cgi-title">Правка словаря</div></div><span class="cgi-arrow" data-mi="chevr"></span></div>
+        <div class="cg-item" onclick="menuGo('search')"><div class="cgi-icon" data-mi="search"></div><div class="cgi-text"><div class="cgi-title">Поиск</div></div><span class="cgi-arrow" data-mi="chevr"></span></div>
+        <div class="cg-item" onclick="menuGo('profiles')"><div class="cgi-icon" data-mi="profiles"></div><div class="cgi-text"><div class="cgi-title">Профили</div></div><span class="cgi-arrow" data-mi="chevr"></span></div>
+        <div class="cg-item" onclick="menuGo('support')"><div class="cgi-icon" data-mi="help"></div><div class="cgi-text"><div class="cgi-title">Поддержка</div></div><span class="cgi-arrow" data-mi="chevr"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ПОИСК — выезжает справа тем же экраном панели, что настройки и меню. Открывается из
+       меню и из бокового столбца. У каждого слова три действия: во фразу, перейти к
+       карточке, показать путь (спецификация, раздел 8). -->
+  <div class="screen" id="search-screen">
+    <div class="panel-header">
+      <input class="form-input" id="searchInput" placeholder="Поиск слова..." oninput="renderSearchResults(this.value)">
+      <button class="icon-btn" onclick="closeSearch()" aria-label="Закрыть поиск"><span class="mi-slot" data-mi="close"></span></button>
+    </div>
+    <div id="searchCount" class="search-count"></div>
+    <div class="panel-body search-results" id="searchResults"></div>
+  </div>
+
+  <!-- НАСТРОЙКИ — корень взрослой зоны.
+       Строки собираются в renderPanelSections() из данных: вид строки задан один раз
+       в общих компонентах (app-1-state.js), здесь остаётся только каркас экрана. -->
+  <!-- Затемнение доски под выдвижной панелью; нажатие по нему закрывает панель -->
+  <div class="drawer-dim" id="drawerDim" onclick="closeCaregiverPanel()"></div>
+  <div class="screen" id="caregiver-panel">
+    <div class="panel-header"><button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button><h2>Настройки</h2><button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button></div>
+    <div class="panel-body" id="cgSections"></div>
+    <input type="file" id="backupFile" accept="application/json,.json" style="display:none" onchange="importBackup(this)">
+  </div>
+
+  <!-- РЕБЁНОК — имя и цвет, переход к другим детям. -->
+  <div class="screen" id="child-screen">
+    <div class="panel-header">
+      <button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button>
+      <h2>Профиль</h2>
+      <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
+    </div>
+    <div class="panel-body" id="childContent"></div>
+  </div>
+
+  <!-- ОКНО И СТОЛБЕЦ — размер окна, листание, сторона столбца, домашняя папка -->
+  <div class="screen" id="access-screen">
+    <div class="panel-header">
+      <button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button>
+      <h2>Окно и столбец</h2>
+      <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
+    </div>
+    <div class="panel-body" id="accessContent"></div>
+  </div>
+
+  <!-- КАСАНИЕ — приспособления к касанию: срабатывание, удержание, игнор повтора -->
+  <div class="screen" id="touch-screen">
+    <div class="panel-header">
+      <button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button>
+      <h2>Касание</h2>
+      <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
+    </div>
+    <div class="panel-body" id="touchContent"></div>
+  </div>
+
+  <!-- КАК ЗВУЧИТ РЕЧЬ — голос, скорость, живой голос, озвучка -->
+  <div class="screen" id="speech-screen">
+    <div class="panel-header">
+      <button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button>
+      <h2>Как звучит речь</h2>
+      <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
+    </div>
+    <div class="panel-body" id="speechContent"></div>
+  </div>
+
+  <!-- ЧТО ВИДИТ РЕБЁНОК — источник символов и их вид в одном месте -->
+  <div class="screen" id="look-screen">
+    <div class="panel-header">
+      <button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button>
+      <h2>Как выглядит доска</h2>
+      <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
+    </div>
+    <div class="panel-body" id="lookContent"></div>
+  </div>
+
+  <!-- PROFILES -->
+  <div class="screen" id="profiles-screen">
+    <div class="panel-header">
+      <button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button>
+      <h2>Профили</h2>
+      <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
+    </div>
+    <div class="panel-body" id="profilesListContent"></div>
+  </div>
+
+  <!-- ACTION MENU — «⋯» действия над строкой списка (профили, группы) -->
+  <div class="modal-overlay" id="actionMenu">
+    <div class="modal-sheet" onclick="event.stopPropagation()">
+      <div class="modal-handle"></div>
+      <div class="modal-title" id="actionMenuTitle"></div>
+      <div class="cg-section action-list" id="actionMenuItems"></div>
+      <button class="btn-full btn-secondary" onclick="closeModal('actionMenu')">Отмена</button>
+    </div>
+  </div>
+
+  <!-- NEW/EDIT PROFILE MODAL -->
+  <div class="modal-overlay" id="profileModal">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title" id="profileModalTitle">Новый профиль</div>
+      <div class="form-field">
+        <label class="form-label">Имя</label>
+        <input class="form-input" id="profileNameInput" placeholder="Например: Миша">
+      </div>
+      <!-- Сетка и уровень здесь не задаются: у каждой настройки одно место.
+           Сетка живёт в «Как ребёнок нажимает». -->
+      <button class="btn-full" id="profileModalSaveBtn" onclick="saveProfile()">Создать профиль</button>
+      <button class="btn-full btn-secondary" onclick="closeModal('profileModal')">Отмена</button>
+      <button class="btn-full btn-danger" id="profileDeleteBtn" style="display:none" onclick="deleteProfile()">Удалить профиль</button>
+    </div>
+  </div>
+
+  <!-- ПОДДЕРЖКА — почта и ответы на частые вопросы (пока заглушка) -->
+  <div class="screen" id="support-screen">
+    <div class="panel-header">
+      <button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button>
+      <h2>Поддержка</h2>
+      <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
+    </div>
+    <div class="panel-body" id="supportContent"></div>
+  </div>
+
+  <!-- ВЫБОР ИЗ СПИСКА — один экран на все настройки «одно значение из многих»
+       (домашняя папка, любимая папка): строка со значением ведёт сюда, здесь список с отметкой -->
+  <div class="screen" id="pick-screen">
+    <div class="panel-header">
+      <button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button>
+      <h2 id="pickTitle"></h2>
+      <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
+    </div>
+    <div class="panel-body" id="pickContent"></div>
+  </div>
+
+  <!-- О ПРИЛОЖЕНИИ — авторство символов, версия, состояние сети -->
+  <div class="screen" id="about-screen">
+    <div class="panel-header">
+      <button class="icon-btn" onclick="panelBack()" aria-label="Назад"><span class="mi-slot" data-mi="chevl"></span></button>
+      <h2>О приложении</h2>
+      <button class="icon-btn" onclick="closeCaregiverPanel()" aria-label="Закрыть и вернуться к доске"><span class="mi-slot" data-mi="close"></span></button>
+    </div>
+    <div class="panel-body" id="aboutContent"></div>
+  </div>
+
+  <!-- GLOBAL TOAST -->
+  <!-- Свой диалог подтверждения (R-H3/R-H4): вместо чужеродного браузерного confirm() -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title" id="confirmTitle">Подтвердите</div>
+      <div id="confirmText" class="confirm-text"></div>
+      <button class="btn-full btn-danger" id="confirmOkBtn" type="button">Удалить</button>
+      <button class="btn-full btn-secondary" type="button" onclick="closeModal('confirmModal')">Отмена</button>
+    </div>
+  </div>
+
+  <div class="toast toast-global" id="toast"></div>
+  <div class="undo-toast" id="undoToast"><span id="undoToastText"></span><button id="undoToastBtn" type="button">Вернуть</button></div>
+
+  <!-- GLOBAL MODALS (outside screens so they work everywhere) -->
+  <div class="modal-overlay" id="addCardModal">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title" id="cardModalTitle">Новая карточка</div>
+      <div class="form-field">
+        <label class="form-label">Слово</label>
+        <input class="form-input" id="newCardText" placeholder="Например: чайник" oninput="updateSmartField()">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Картинка</label>
+        <div class="photo-upload" id="photoUpload" onclick="document.getElementById('photoInput').click()">
+          <span class="pu-icon" data-mi="images"></span>
+          <span class="pu-text">Нажмите, чтобы загрузить фото</span>
+        </div>
+        <input type="file" id="photoInput" accept="image/*" style="display:none" onchange="handlePhoto(this)">
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(this)">
+        <input type="file" id="gifInput" accept="image/gif" style="display:none" onchange="handleGif(this)">
+        <!-- Источники картинки, как у Avaz: камера, галерея, библиотека символов, гифка.
+             Символ карточки — фотография помощника или пиктограмма ARASAAC; эмодзи нет. -->
+        <div class="form-row" id="imageSources">
+          <div class="form-chip" onclick="document.getElementById('cameraInput').click()"><span class="chip-icon" data-mi="camera"></span>Камера</div>
+          <div class="form-chip" onclick="document.getElementById('photoInput').click()"><span class="chip-icon" data-mi="images"></span>Галерея</div>
+          <div class="form-chip" onclick="openArasaacPicker(pickCardSymbol)"><span class="chip-icon" data-mi="symbols"></span>Библиотека ARASAAC</div>
+          <div class="form-chip" onclick="document.getElementById('gifInput').click()"><span class="chip-icon" data-mi="anim"></span>Гифка</div>
+        </div>
+        <div class="photo-actions" id="photoActions" style="display:none">
+          <div class="photo-action-btn" onclick="rotatePhoto()">Повернуть</div>
+          <div class="photo-action-btn" onclick="cropPhotoSquare()">Обрезать до квадрата</div>
+          <div class="photo-action-btn" id="btnRemoveBg" onclick="removeBg()">Удалить фон</div>
+          <div class="photo-action-btn" onclick="clearCardImage()">Убрать</div>
+        </div>
+        <div class="form-row" id="noPhotoActions" style="display:none"></div>
+        <div class="form-hint">Без своей картинки карточка возьмёт картинку по слову. Если её нет, останется подпись и пустое место под символ.</div>
+      </div>
+      <div class="form-field">
+        <label class="form-label">Звук</label>
+        <input class="form-input" id="speakAsInput" placeholder="Произносить как (если не так, как написано)">
+        <div class="form-row mt-2" id="audioRow">
+          <div class="form-chip" id="btnRecord" onclick="toggleRecord()"><span class="chip-icon" data-mi="mic"></span>Записать свой голос</div>
+          <div class="form-chip" id="btnPlayAudio" onclick="playCardAudio()" style="display:none"><span class="chip-icon" data-mi="play"></span>Прослушать</div>
+          <div class="form-chip" id="btnDropAudio" onclick="dropCardAudio()" style="display:none">Удалить запись</div>
+        </div>
+        <div class="form-hint" id="audioHint">Записанный голос звучит при нажатии на карточку вместо синтеза. Во фразе целиком слово читает голос устройства, по полю «произносить как», если оно заполнено.</div>
+      </div>
+      <div class="form-field">
+        <label class="form-label">Часть речи</label>
+        <div class="gs-options" id="posChips">
+          <div class="gs-opt active" data-pos="noun" onclick="selectPOS(this)">Существительное</div>
+          <div class="gs-opt" data-pos="verb" onclick="selectPOS(this)">Глагол</div>
+          <div class="gs-opt" data-pos="adj" onclick="selectPOS(this)">Прилагательное</div>
+          <div class="gs-opt" data-pos="pronoun" onclick="selectPOS(this)">Местоимение</div>
+        </div>
+      </div>
+      <!-- Smart field: глагол -->
+      <div id="smartFieldVerb" style="display:none">
+        <div class="smart-divider"></div>
+        <label class="form-label form-label-block">Как это звучит? <span class="form-label-hint">— проверьте</span></label>
+        <div class="verb-form-row"><span class="vfr-label">Я</span><input class="form-input vfr-input" id="vf_ya" placeholder=""></div>
+        <div class="verb-form-row"><span class="vfr-label">Ты</span><input class="form-input vfr-input" id="vf_ty" placeholder=""></div>
+        <div class="verb-form-row"><span class="vfr-label">Он / Она</span><input class="form-input vfr-input" id="vf_on" placeholder=""></div>
+        <div class="verb-form-row"><span class="vfr-label">Мы</span><input class="form-input vfr-input" id="vf_my" placeholder=""></div>
+        <div class="verb-form-row mb-4"><span class="vfr-label">Они</span><input class="form-input vfr-input" id="vf_oni" placeholder=""></div>
+      </div>
+
+      <!-- Smart field: существительное -->
+      <div id="smartFieldNoun" style="display:none">
+        <div class="smart-divider"></div>
+        <div class="form-field">
+          <label class="form-label">Куда идти? <span class="form-label-hint">— если это место (необязательно)</span></label>
+          <input class="form-input" id="nounDirectionalInput" placeholder="например: в бассейн">
+        </div>
+        <div class="form-field">
+          <label class="form-label">Род слова <span class="form-label-hint">— необязательно</span></label>
+          <div class="gs-options" id="genderChips">
+            <div class="gs-opt active" data-gender="" onclick="selectGender(this)">—</div>
+            <div class="gs-opt" data-gender="он" onclick="selectGender(this)">Муж.</div>
+            <div class="gs-opt" data-gender="она" onclick="selectGender(this)">Жен.</div>
+            <div class="gs-opt" data-gender="оно" onclick="selectGender(this)">Ср.</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-full" id="cardModalSaveBtn" onclick="saveNewCard()">Добавить</button>
+      <button class="btn-full btn-secondary" onclick="closeModal('addCardModal')">Отмена</button>
+    </div>
+  </div>
+
+  <!-- МНОГО СЛОВ ОДНОВРЕМЕННО -->
+  <div class="modal-overlay" id="manyWordsModal">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">Много слов одновременно</div>
+      <div class="form-field">
+        <label class="form-label">Слова через запятую</label>
+        <textarea class="form-input" id="manyWordsInput" rows="4" placeholder="хлеб, масло, джем, -фрукты, яблоко"></textarea>
+        <div class="form-hint">Папка помечается дефисом впереди: «-фрукты». Каждое слово встанет в следующую свободную клетку, картинки подберутся по слову.</div>
+      </div>
+      <button class="btn-full" onclick="saveManyWords()">Добавить</button>
+      <button class="btn-full btn-secondary" onclick="closeModal('manyWordsModal')">Отмена</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="categoryModal">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title" id="catModalTitle">Новая папка</div>
+      <div class="form-field">
+        <label class="form-label">Название</label>
+        <input class="form-input" id="catNameInput" placeholder="Например: Бассейн">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Картинка папки</label>
+        <div class="form-row">
+          <div class="form-chip" id="catEmojiBtn" onclick="openArasaacPicker(id=>{S.selectedCatPicto=id;setCatIconBtn(id)})">Выбрать иконку</div>
+        </div>
+      </div>
+      <button class="btn-full" id="catModalSaveBtn" onclick="saveCategory()">Создать</button>
+      <button class="btn-full btn-secondary" onclick="closeModal('categoryModal')">Отмена</button>
+      <button class="btn-full btn-danger" style="display:none" id="catDeleteBtn" onclick="deleteCategory()">Удалить папку</button>
+    </div>
+  </div>
+
+  <!-- ARASAAC PICTOGRAM PICKER (иконка категории) -->
+  <div class="modal-overlay" id="arasaacPickerOverlay">
+    <div class="modal-sheet picker-sheet">
+      <div class="picker-head">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Выберите картинку</div>
+        <input class="form-input" id="arasaacSearchInput" placeholder="Поиск: еда, игра, туалет…" oninput="arasaacPickerSearch(this.value)">
+      </div>
+      <div class="emoji-grid-wrap" id="arasaacResults"></div>
+      <button class="btn-full btn-secondary" onclick="closeArasaacPicker()">Отмена</button>
+    </div>
+  </div>
+
+
+</div><!-- /.phone-screen -->
+<div id="reviewPins"></div>
+</div><!-- /#deviceFrame -->
+</div><!-- /#reviewViewport -->
+</div><!-- /#reviewStage -->
+<aside id="reviewPanel" aria-label="Комментарии"></aside>
+<div id="reviewHint"></div>
+<!-- Приложение разбито на части по разделам. Порядок ВАЖЕН: файлы — классические
+     скрипты с общей глобальной областью, каждый опирается на предыдущие; app-6-boot
+     запускает всё в самом конце. core.js (чистая логика) идёт первым. -->
+<script src="core.js"></script>
+<script src="app-1-state.js"></script>
+<script src="app-2-board.js"></script>
+<script src="app-3-vocab.js"></script>
+<script src="app-4-speech.js"></script>
+<script src="app-5-edit.js"></script>
+<script src="app-6-boot.js"></script>
+<script src="review.js"></script>
+</body>
+</html>
