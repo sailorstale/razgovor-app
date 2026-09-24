@@ -78,22 +78,12 @@
   function saveQueue() { lsSet(LS_QUEUE, queue); lsSet(LS_IDMAP, idMap); }
   function realId(id) { return idMap[id] || id; }
 
-  // Комментарии лежат в одном месте — на боевом сервере. Прототип на своей машине
-  // ходит за ними туда же, поэтому дизайнер и владелец видят одни и те же пины, откуда
-  // бы макет ни открыли. Раньше адрес брался от самой страницы: на своей машине
-  // комментарии копились в местной папке, на бою в своей, и две стопки не сходились.
-  var COMMENTS_HOST = 'https://razgovor-aac-production.up.railway.app';
-  function isLocalPage() {
-    var h = location.hostname;
-    return /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(h) || /\.(localhost|local)$/i.test(h);
-  }
-  // Адрес ?comments=local оставляет прототип на своём сервере: нужно, когда правят
-  // сам обмен комментариями и незачем трогать общую стопку.
-  function wantsLocalComments() {
-    return /[?&]comments=local\b/.test(location.search);
-  }
+  // Комментарии лежат там, откуда открыт макет: на своей машине — на своём сервере,
+  // на боевом адресе — нигде, потому что там только файлы и сервера нет. Общего
+  // хранилища на стороне больше нет: 24 сентября 2026 года мы ушли с Railway, куда
+  // прототип ходил за общей стопкой. Вернуть общие комментарии = поднять сервер там,
+  // откуда он открывается и в России, — это отдельная задача.
   function apiUrl(p) {
-    if (isLocalPage() && !wantsLocalComments()) return COMMENTS_HOST + '/' + p;
     // Относительный путь — работает и в корне домена, и в подкаталоге.
     return new URL(p, location.href.replace(/[^/]*$/, '')).toString();
   }

@@ -1,6 +1,6 @@
 // Service worker «Разговора» — офлайн-работа (оболочка + пиктограммы ARASAAC).
 // Версию поднимать при изменении оболочки, чтобы кэш обновился.
-const VERSION = 'v81';
+const VERSION = 'v83';
 const SHELL_CACHE = 'razgovor-shell-' + VERSION;
 const RUNTIME_CACHE = 'razgovor-runtime-' + VERSION;
 

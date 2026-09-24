@@ -104,7 +104,7 @@ async function ttsWarm(t){
     const c=await caches.open(TTS_CACHE);
     if(await c.match(ttsUrl(t))) return true;
     const r=await fetch(ttsUrl(t));
-    if(!r.ok){ if(r.status===503) ttsOff=true; return false; }
+    if(!r.ok){ if(r.status===503||r.status===404) ttsOff=true; return false; }
     await c.put(ttsUrl(t), r.clone());
     return true;
   }catch(e){ return false; }
