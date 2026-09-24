@@ -22,7 +22,7 @@
 
   // Режим ?comments=local держит свою копию и свою очередь: иначе тестовые правки
   // для местного сервера при следующем обычном открытии уехали бы в общую стопку.
-  var LS_SUFFIX = isLocalPage() && wantsLocalComments() ? '-local' : '';
+  var LS_SUFFIX = wantsLocalComments() ? '-local' : '';
   var LS_COMMENTS = 'razgovor-comments-v1' + LS_SUFFIX;   // локальная копия (страховка)
   var LS_UI = 'razgovor-review-ui-v1';
   var LS_QUEUE = 'razgovor-comments-queue-v1' + LS_SUFFIX; // что не доехало до сервера
