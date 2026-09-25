@@ -1065,6 +1065,13 @@ function selectVoiceURI(uri){
   renderSpeech(); persist();
   speakWord('Привет! Меня хорошо слышно?');   // сразу дать послушать
 }
+// Выбор голоса устройства выключает записанный: иначе в списке горели бы две
+// отметки, а говорил бы записанный.
+function useDeviceVoice(uri){
+  S.bakedVoice='';
+  selectVoiceURI(uri);
+}
+
 function voiceListHtml(){
   const voices=bestRuVoices();
   if(!voices.length) return '<div class="voice-empty"><b>Русского голоса на устройстве нет.</b> Поэтому русские слова читает английский голос, с акцентом. Установите русский голос по инструкции ниже или включите «Живой голос»: он приходит с сервера и от устройства не зависит.</div>';
@@ -1072,20 +1079,22 @@ function voiceListHtml(){
   return voices.map(v=>{
     const natural=voiceScore(v)>=6;
     const remote=v.localService===false;
-    const sel=cur && v.voiceURI===cur.voiceURI;
+    const sel=!S.bakedVoice && cur && v.voiceURI===cur.voiceURI;
     const uri=(v.voiceURI||'').replace(/'/g,"\\'");
-    return uiRow({title:esc(v.name)+(natural?' <span class="cgi-badge">натуральный</span>':'')+(remote?' <span class="cgi-badge is-neutral">нужен интернет</span>':''), titleHtml:true, radio:sel, action:`selectVoiceURI('${uri}')`});
+    return uiRow({title:esc(v.name)+(natural?' <span class="cgi-badge">натуральный</span>':'')+(remote?' <span class="cgi-badge is-neutral">нужен интернет</span>':''), titleHtml:true, radio:sel, action:`useDeviceVoice('${uri}')`});
   }).join('');
 }
 // Записанные голоса лежат рядом с приложением: работают офлайн и не отправляют
 // текст фразы наружу. Выбор сразу даёт послушать — решает ухо, а не описание.
+// Опись могла не успеть загрузиться к открытию настроек: тогда просим её и
+// перерисовываем экран, иначе человек навсегда видел бы «не загрузились».
 function bakedVoiceListHtml(){
   const bank=voiceBank;
   if(!bank || !bank.voices || !bank.voices.length){
-    return '<div class="voice-hint">Записанные голоса не загрузились. Говорит голос устройства.</div>';
+    loadVoiceBank().then(b=>{ if(b && b.voices && b.voices.length) renderSpeech(); });
+    return '<div class="voice-hint">Загружаем голоса…</div>';
   }
-  const rows=[uiRow({title:'Голос устройства', desc:'Тот, что стоит в системе. Читает и слова, которые вы завели сами',
-                     radio:!S.bakedVoice, action:"setSetting('bakedVoice','')"})];
+  const rows=[];
   for(const v of bank.voices){
     const sel=S.bakedVoice===v.id;
     rows.push(uiRow({
@@ -1093,29 +1102,29 @@ function bakedVoiceListHtml(){
       desc:sel?'Нажмите ещё раз, чтобы послушать':'',
       radio:sel,
       action:sel?`playVoiceSample('${v.id}')`:`setSetting('bakedVoice','${v.id}')`}));
+    // Тон стоит сразу под выбранным голосом: он относится к нему, а не к списку.
+    if(sel && v.warm) rows.push(bakedToneHtml());
   }
-  rows.push('<div class="voice-hint">Записанные голоса звучат и без интернета. Слова, которые вы завели сами, читает голос устройства.</div>');
   return rows.join('');
 }
 
 // Тон показываем только там, где он что-то меняет: у части голосов тёплого
 // варианта нет, и переключатель для них обманывал бы.
 function bakedToneHtml(){
-  if(!S.bakedVoice || !voiceBank || !voiceBank.voices) return '';
-  const v=voiceBank.voices.filter(x=>x.id===S.bakedVoice)[0];
-  if(!v || !v.warm) return '';
-  return uiSection('Тон голоса', [
-    uiSegment({title:'Тон голоса',
-      desc:'Одни и те же слова, сказанные ровно или мягче и теплее',
-      options:[{label:'Нейтрально',     active:!S.bakedWarm, action:'setSetting(\'bakedWarm\', false)'},
-               {label:'Доброжелательно', active:!!S.bakedWarm, action:'setSetting(\'bakedWarm\', true)'}]}),
-  ]);
+  return uiSegment({title:'Тон',
+    desc:'Одни и те же слова, сказанные ровно или мягче и теплее',
+    options:[{label:'Нейтрально',      active:!S.bakedWarm, action:"setSetting('bakedWarm', false)"},
+             {label:'Доброжелательно', active:!!S.bakedWarm, action:"setSetting('bakedWarm', true)"}]});
 }
 
 function renderSpeech(){
   const el=document.getElementById('speechContent'); if(!el) return;
   el.innerHTML = [
-    uiSection('Голос', [ voiceListHtml() ]),
+    uiSection('Голос', [
+      bakedVoiceListHtml(),
+      '<div class="voice-hint">Записанные голоса звучат и без интернета. Слова, которые вы завели сами, они не знают — их читает голос устройства.</div>',
+    ]),
+    uiSection('Голоса устройства', [ voiceListHtml() ]),
     uiSection('Скорость', [
       uiSegment({title:'Скорость речи', options:[
         {label:'Медленно', active:S.speechRate<0.8,                          action:'setSpeechRate(0.7)'},
@@ -1145,8 +1154,7 @@ function renderSpeech(){
         options:[{label:'Движок достраивает', active:!S.childBuilds, action:'setChildBuilds(false)'},
                  {label:'Говорящий сам',      active:!!S.childBuilds, action:'setChildBuilds(true)'}]}),
     ]),
-    uiSection('Живой голос', [ bakedVoiceListHtml() ]),
-    bakedToneHtml(),
+
   ].join('');
   renderIcons(el); a11yEnhance(el);
 }
