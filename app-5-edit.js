@@ -967,6 +967,8 @@ const SETTING = {
   autoClear:  { clean: bool },
   bakedVoice: { render: ()=>{ renderSpeech(); renderPanelSections(); },
                 after: v=>{ if(v){ playVoiceSample(v); warmVoiceBank(v); } } },
+  bakedWarm:  { clean: bool, render: renderSpeech,
+                after: ()=>{ if(S.bakedVoice){ playVoiceSample(S.bakedVoice); warmVoiceBank(S.bakedVoice); } } },
 
   // Как выглядит доска
   imageLibrary:    { render: ()=>{ renderAccess(); renderWindow(); renderPanelSections(); },
@@ -1096,6 +1098,20 @@ function bakedVoiceListHtml(){
   return rows.join('');
 }
 
+// Тон показываем только там, где он что-то меняет: у части голосов тёплого
+// варианта нет, и переключатель для них обманывал бы.
+function bakedToneHtml(){
+  if(!S.bakedVoice || !voiceBank || !voiceBank.voices) return '';
+  const v=voiceBank.voices.filter(x=>x.id===S.bakedVoice)[0];
+  if(!v || !v.warm) return '';
+  return uiSection('Тон голоса', [
+    uiSegment({title:'Тон голоса',
+      desc:'Одни и те же слова, сказанные ровно или мягче и теплее',
+      options:[{label:'Нейтрально',     active:!S.bakedWarm, action:'setSetting(\'bakedWarm\', false)'},
+               {label:'Доброжелательно', active:!!S.bakedWarm, action:'setSetting(\'bakedWarm\', true)'}]}),
+  ]);
+}
+
 function renderSpeech(){
   const el=document.getElementById('speechContent'); if(!el) return;
   el.innerHTML = [
@@ -1130,6 +1146,7 @@ function renderSpeech(){
                  {label:'Говорящий сам',      active:!!S.childBuilds, action:'setChildBuilds(true)'}]}),
     ]),
     uiSection('Живой голос', [ bakedVoiceListHtml() ]),
+    bakedToneHtml(),
   ].join('');
   renderIcons(el); a11yEnhance(el);
 }

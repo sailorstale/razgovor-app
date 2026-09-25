@@ -95,9 +95,16 @@ let voiceBankLoading=null;
 let bankAudio=null;             // один общий элемент: Safari разрешает звук
 let bankUnlocked=false;         // только из касания или после разблокировки
 
-const voiceSrc=(voice,text)=>{
+// Тёплый тон лежит отдельной папкой: у части голосов его нет, и тогда играет
+// нейтральный — переключатель для них в настройках не показывается.
+const voiceDir=(voice,warm)=>{
+  if(!warm) return voice;
+  const v=voiceBank && voiceBank.voices && voiceBank.voices.filter(x=>x.id===voice)[0];
+  return (v && v.warm) ? voice+'-warm' : voice;
+};
+const voiceSrc=(voice,text,warm)=>{
   const file=voiceBank && voiceBank.strings && voiceBank.strings[text];
-  return file ? 'voice/'+voice+'/'+file : null;
+  return file ? 'voice/'+voiceDir(voice, warm)+'/'+file : null;
 };
 
 function loadVoiceBank(){
@@ -131,7 +138,7 @@ if(typeof document!=='undefined'){
 // Проиграть записанную строку. Возвращает false, если записи нет.
 function playFromBank(t, opts){
   opts=opts||{};
-  const src=voiceSrc(S.bakedVoice, t);
+  const src=voiceSrc(S.bakedVoice, t, S.bakedWarm);
   if(!src) return false;
   try{
     if('speechSynthesis'in window) speechSynthesis.cancel();
@@ -151,12 +158,12 @@ function playFromBank(t, opts){
 // Проба голоса для настроек: несколько настоящих фраз подряд, чтобы услышать,
 // как голос звучит на деле, а не на одном слове.
 const VOICE_SAMPLE=['Я хочу пить','Мне больно','Я люблю маму'];
-function playVoiceSample(voice){
+function playVoiceSample(voice, warm){
   loadVoiceBank().then(()=>{
     let i=0;
     const next=()=>{
       if(i>=VOICE_SAMPLE.length) return;
-      const src=voiceSrc(voice, VOICE_SAMPLE[i++]);
+      const src=voiceSrc(voice, VOICE_SAMPLE[i++], warm===undefined?S.bakedWarm:warm);
       if(!src) return next();
       bankAudio=bankAudio||new Audio();
       bankAudio.onended=next; bankAudio.onerror=next;
@@ -174,8 +181,9 @@ async function warmVoiceBank(voice){
   await loadVoiceBank();
   if(!voiceBank || !voiceBank.strings) return;
   if(navigator.onLine===false) return;
+  const dir=voiceDir(voice, S.bakedWarm);
   for(const file of Object.values(voiceBank.strings)){
-    try{ await fetch('voice/'+voice+'/'+file, {cache:'force-cache'}); }catch(e){ break; }
+    try{ await fetch('voice/'+dir+'/'+file, {cache:'force-cache'}); }catch(e){ break; }
   }
 }
 
