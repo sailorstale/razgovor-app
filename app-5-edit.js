@@ -965,8 +965,8 @@ const SETTING = {
                 toast: m=>({all:'Звучит всё: слова, папки, фраза', words:'Звучат слова при нажатии, фраза по кнопке', strip:'Звучит только строка по кнопке'})[m] },
   speakKeys:  { clean: bool },
   autoClear:  { clean: bool },
-  cloudVoice: { clean: bool, render: renderPanelSections,
-                after: on=>{ if(on){ ttsOff=false; ttsWarmVocabulary(); } } },
+  bakedVoice: { render: ()=>{ renderSpeech(); renderPanelSections(); },
+                after: v=>{ if(v){ playVoiceSample(v); warmVoiceBank(v); } } },
 
   // Как выглядит доска
   imageLibrary:    { render: ()=>{ renderAccess(); renderWindow(); renderPanelSections(); },
@@ -1075,6 +1075,27 @@ function voiceListHtml(){
     return uiRow({title:esc(v.name)+(natural?' <span class="cgi-badge">натуральный</span>':'')+(remote?' <span class="cgi-badge is-neutral">нужен интернет</span>':''), titleHtml:true, radio:sel, action:`selectVoiceURI('${uri}')`});
   }).join('');
 }
+// Записанные голоса лежат рядом с приложением: работают офлайн и не отправляют
+// текст фразы наружу. Выбор сразу даёт послушать — решает ухо, а не описание.
+function bakedVoiceListHtml(){
+  const bank=voiceBank;
+  if(!bank || !bank.voices || !bank.voices.length){
+    return '<div class="voice-hint">Записанные голоса не загрузились. Говорит голос устройства.</div>';
+  }
+  const rows=[uiRow({title:'Голос устройства', desc:'Тот, что стоит в системе. Читает и слова, которые вы завели сами',
+                     radio:!S.bakedVoice, action:"setSetting('bakedVoice','')"})];
+  for(const v of bank.voices){
+    const sel=S.bakedVoice===v.id;
+    rows.push(uiRow({
+      title:esc(v.name)+' <span class="cgi-badge is-neutral">'+esc(v.sex)+'</span>', titleHtml:true,
+      desc:sel?'Нажмите ещё раз, чтобы послушать':'',
+      radio:sel,
+      action:sel?`playVoiceSample('${v.id}')`:`setSetting('bakedVoice','${v.id}')`}));
+  }
+  rows.push('<div class="voice-hint">Записанные голоса звучат и без интернета. Слова, которые вы завели сами, читает голос устройства.</div>');
+  return rows.join('');
+}
+
 function renderSpeech(){
   const el=document.getElementById('speechContent'); if(!el) return;
   el.innerHTML = [
@@ -1108,10 +1129,7 @@ function renderSpeech(){
         options:[{label:'Движок достраивает', active:!S.childBuilds, action:'setChildBuilds(false)'},
                  {label:'Говорящий сам',      active:!!S.childBuilds, action:'setChildBuilds(true)'}]}),
     ]),
-    uiSection('Голос из сети', [
-      uiToggle({id:'toggleCloudVoice', setting:'cloudVoice', title:'Живой голос', on:S.cloudVoice, descHtml:true,
-                desc:'Нейросетевой голос вместо системного. <b>Текст произнесённой фразы уходит на сервер озвучки</b> и сохраняется там, чтобы не синтезировать повторно. Выключен по умолчанию: без него речь не покидает устройство'}),
-    ]),
+    uiSection('Живой голос', [ bakedVoiceListHtml() ]),
   ].join('');
   renderIcons(el); a11yEnhance(el);
 }

@@ -82,99 +82,108 @@ function warnIfNoVoice(){
   if(!('speechSynthesis'in window)){ ruVoiceWarned=true; showToast('На устройстве нет синтеза речи'); return; }
   if(voicesLoaded && noRuVoice){ ruVoiceWarned=true; showToast('Нет русского голоса: слова читает английский голос. Установите русский в настройках устройства — см. «Голос и озвучка».'); }
 }
-// ===== ЖИВОЙ ГОЛОС: гибрид «кэш → системный» =====
-// Правило номер один для AAC: ребёнок НИКОГДА не ждёт сеть.
-//   • фраза есть в кэше → играем живой нейросетевой голос (мгновенно, и офлайн тоже);
-//   • нет в кэше       → сразу говорим системным голосом, а живой тихо догружаем
-//                        в фон, чтобы в следующий раз он уже был;
-//   • офлайн           → всегда системный.
-// Сам ключ провайдера у нас на сервере, клиент ходит только в свой /api/tts.
-const TTS_CACHE='razgovor-tts-v1';
-let ttsAudio=null;              // текущее воспроизведение
-let ttsOff=false;               // сервер сказал «не настроено» — больше не дёргаем
+// ===== ЖИВОЙ ГОЛОС: записи лежат рядом с приложением =====
+// Правило номер один для AAC: ребёнок НИКОГДА не ждёт сеть. Поэтому голос не
+// считается на лету, а наговорён заранее и лежит файлами в voice/. Открылось
+// приложение — голос уже на устройстве и дальше работает вообще без сети.
+//   • строка есть в банке → играем записанный голос, мгновенно;
+//   • строки нет (слово завёл взрослый) → говорит голос устройства, как раньше;
+//   • голос не выбран → голос устройства.
+// Текст фразы никуда не уходит: это речь человека с нарушением речи.
+let voiceBank=null;             // опись: текст → имя файла
+let voiceBankLoading=null;
+let bankAudio=null;             // один общий элемент: Safari разрешает звук
+let bankUnlocked=false;         // только из касания или после разблокировки
 
-const ttsUrl=t=>'/api/tts?text='+encodeURIComponent(t);
+const voiceSrc=(voice,text)=>{
+  const file=voiceBank && voiceBank.strings && voiceBank.strings[text];
+  return file ? 'voice/'+voice+'/'+file : null;
+};
 
-async function ttsCached(t){
-  if(!('caches'in window)) return null;
-  try{ return await (await caches.open(TTS_CACHE)).match(ttsUrl(t)); }catch(e){ return null; }
+function loadVoiceBank(){
+  if(voiceBank || voiceBankLoading) return voiceBankLoading||Promise.resolve(voiceBank);
+  voiceBankLoading=fetch('voice/index.json')
+    .then(r=>r.ok?r.json():null)
+    .then(j=>{ voiceBank=j||{strings:{},voices:[]}; return voiceBank; })
+    .catch(()=>{ voiceBank={strings:{},voices:[]}; return voiceBank; });
+  return voiceBankLoading;
 }
-// Догрузить и положить в кэш. Возвращает true, если фраза теперь есть.
-async function ttsWarm(t){
-  if(ttsOff || !S.cloudVoice || !('caches'in window)) return false;
-  if(navigator.onLine===false) return false;
+
+// Safari на iPhone и iPad пускает звук только из обработчика касания. Поэтому
+// элемент создаём заранее и «раскрываем» его на первом касании экрана: дальше
+// достаточно сменить адрес и позвать play(), без ожиданий между жестом и звуком.
+function unlockBankAudio(){
+  if(bankUnlocked) return;
   try{
-    const c=await caches.open(TTS_CACHE);
-    if(await c.match(ttsUrl(t))) return true;
-    const r=await fetch(ttsUrl(t));
-    if(!r.ok){ if(r.status===503||r.status===404) ttsOff=true; return false; }
-    await c.put(ttsUrl(t), r.clone());
-    return true;
-  }catch(e){ return false; }
+    bankAudio=bankAudio||new Audio();
+    bankAudio.muted=true;
+    const p=bankAudio.play();
+    if(p&&p.then) p.then(()=>{ bankAudio.pause(); bankAudio.muted=false; }).catch(()=>{ bankAudio.muted=false; });
+    else { bankAudio.pause(); bankAudio.muted=false; }
+  }catch(e){ /* не вышло — сыграем при первом слове */ }
+  bankUnlocked=true;
 }
-async function ttsPlay(resp, opts){
+if(typeof document!=='undefined'){
+  document.addEventListener('pointerdown', unlockBankAudio, {once:true, capture:true});
+  document.addEventListener('touchstart', unlockBankAudio, {once:true, capture:true});
+}
+
+// Проиграть записанную строку. Возвращает false, если записи нет.
+function playFromBank(t, opts){
+  opts=opts||{};
+  const src=voiceSrc(S.bakedVoice, t);
+  if(!src) return false;
   try{
-    const url=URL.createObjectURL(await resp.blob());
-    if(ttsAudio){ try{ ttsAudio.pause(); }catch(e){} }
     if('speechSynthesis'in window) speechSynthesis.cancel();
-    const a=new Audio(url); ttsAudio=a;
-    a.playbackRate=S.speechRate||1;
-    if(opts.onstart) a.onplay=opts.onstart;
-    a.onended=()=>{ URL.revokeObjectURL(url); if(opts.onend) opts.onend(); };
-    a.onerror=()=>{ URL.revokeObjectURL(url); if(opts.onerror) opts.onerror(); };
-    await a.play();
+    bankAudio=bankAudio||new Audio();
+    bankAudio.onended=null; bankAudio.onerror=null;
+    bankAudio.src=src;
+    bankAudio.playbackRate=S.speechRate||1;
+    if(opts.onstart) bankAudio.onplay=opts.onstart;
+    bankAudio.onended=()=>{ if(opts.onend) opts.onend(); };
+    bankAudio.onerror=()=>{ if(opts.onerror) opts.onerror(); };
+    const p=bankAudio.play();
+    if(p&&p.catch) p.catch(()=>{ speakSystem(t,null,opts); });
     return true;
   }catch(e){ return false; }
 }
-// Прогрев словаря: заранее синтезируем частые слова, чтобы живой голос звучал
-// с первого раза. Тихо, по одному, только онлайн и только если живой голос включён.
-async function ttsWarmVocabulary(limit){
-  if(ttsOff || !S.cloudVoice || navigator.onLine===false) return;
-  const words=[];
-  for(const x of allWords()){ if(x.word.text) words.push(x.word.text); }
-  for(const t of words.slice(0, limit||60)){
-    if(ttsOff) break;
-    await ttsWarm(t);
+
+// Проба голоса для настроек: несколько настоящих фраз подряд, чтобы услышать,
+// как голос звучит на деле, а не на одном слове.
+const VOICE_SAMPLE=['Я хочу пить','Мне больно','Я люблю маму'];
+function playVoiceSample(voice){
+  loadVoiceBank().then(()=>{
+    let i=0;
+    const next=()=>{
+      if(i>=VOICE_SAMPLE.length) return;
+      const src=voiceSrc(voice, VOICE_SAMPLE[i++]);
+      if(!src) return next();
+      bankAudio=bankAudio||new Audio();
+      bankAudio.onended=next; bankAudio.onerror=next;
+      bankAudio.src=src; bankAudio.playbackRate=S.speechRate||1;
+      const p=bankAudio.play(); if(p&&p.catch) p.catch(()=>{});
+    };
+    if('speechSynthesis'in window) speechSynthesis.cancel();
+    next();
+  });
+}
+
+// Скачать весь банк выбранного голоса, чтобы он работал и без сети. Тихо, по
+// одному файлу: служебный слой складывает их в свой запас по дороге.
+async function warmVoiceBank(voice){
+  await loadVoiceBank();
+  if(!voiceBank || !voiceBank.strings) return;
+  if(navigator.onLine===false) return;
+  for(const file of Object.values(voiceBank.strings)){
+    try{ await fetch('voice/'+voice+'/'+file, {cache:'force-cache'}); }catch(e){ break; }
   }
 }
 
 // Озвучка. Возвращает «хэндл» синхронно — вызывающий код проверяет его на
-// «синтез вообще возможен», поэтому облачная ветка обязана вернуть не-null.
-// Сколько ждём живой голос, прежде чем сказать системным.
-// Замер: синтез новой фразы укладывается в 0.3–0.5 с, так что бюджета хватает
-// с запасом. Раньше здесь было «не ждём вообще» — и это ломало главный сценарий:
-// собранные фразы каждый раз новые (их лепит грамматический движок), а одиночный
-// тап произносит склонённую форму («сока»), которой в прогреве нет. Промах по
-// кэшу → системный голос. Чем больше нажатий, тем чаще «сваливались» на него.
-const TTS_WAIT_MS = 900;
-
+// «синтез вообще возможен».
 function speak(t, rate, opts){
   opts=opts||{};
-  if(S.cloudVoice && ('caches'in window) && !ttsOff){
-    const handle={cloud:true};
-    let spoken=false;                                  // защита от двойного произнесения
-    const saySystem=()=>{ if(spoken) return; spoken=true; speakSystem(t,rate,opts); };
-    const playOr=async resp=>{
-      spoken=true;
-      if(await ttsPlay(resp,opts)) return true;
-      spoken=false; saySystem(); return false;         // аудио не проигралось — откат
-    };
-
-    ttsCached(t).then(async hit=>{
-      if(hit) return playOr(hit);                      // уже есть — мгновенно
-      if(navigator.onLine===false) return saySystem(); // офлайн — не ждём впустую
-      // даём живому голосу короткий шанс; не успел — говорим системным,
-      // но фразу всё равно докачиваем, чтобы в следующий раз была мгновенно
-      const timer=setTimeout(saySystem, TTS_WAIT_MS);
-      const ok=await ttsWarm(t);
-      clearTimeout(timer);
-      if(spoken) return;                               // не уложились — уже сказали
-      const fresh=ok ? await ttsCached(t) : null;
-      if(fresh) return playOr(fresh);
-      saySystem();
-    }).catch(saySystem);
-    return handle;
-  }
+  if(S.bakedVoice && voiceBank && playFromBank(t, opts)) return {baked:true};
   return speakSystem(t,rate,opts);
 }
 

@@ -1,6 +1,6 @@
 // Service worker «Разговора» — офлайн-работа (оболочка + пиктограммы ARASAAC).
 // Версию поднимать при изменении оболочки, чтобы кэш обновился.
-const VERSION = 'v100';
+const VERSION = 'v101';
 const SHELL_CACHE = 'razgovor-shell-' + VERSION;
 const RUNTIME_CACHE = 'razgovor-runtime-' + VERSION;
 
@@ -28,6 +28,7 @@ const SHELL = [
 
   // Пиктограммы стартового словаря лежат внутри приложения: это закрывает и
   // утечку словаря на чужой сервер, и пустую доску при первом запуске без сети.
+  './voice/index.json',
   './pictos/index.json',
   './pictos/бабушка.png',
   './pictos/банан.png',

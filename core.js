@@ -761,6 +761,9 @@ const DEAD_SETTINGS = [
   'correctPin', 'pinCustomized', 'pin', 'predictive',
   'level', 'phase', 'grammarLevel', 'stage', 'learn', 'childReady', 'pauseSeconds',
   'gridCols', 'gridRows', 'currentCategory', 'tempCols', 'tempRows', 'speakOnSelect',
+  // Живой голос больше не приходит из сети: записи лежат рядом с приложением,
+  // и голос выбирается по имени в bakedVoice.
+  'cloudVoice',
 ];
 
 // Настройки одного профиля в нынешнем виде.
